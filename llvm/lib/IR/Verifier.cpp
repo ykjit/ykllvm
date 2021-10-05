@@ -1637,6 +1637,7 @@ static bool isFuncOnlyAttr(Attribute::AttrKind Kind) {
   case Attribute::Hot:
   case Attribute::OptForFuzzing:
   case Attribute::OptimizeNone:
+  case Attribute::OptimizeNoneAll:
   case Attribute::JumpTable:
   case Attribute::Convergent:
   case Attribute::ArgMemOnly:
@@ -1945,6 +1946,20 @@ void Verifier::verifyFunctionAttrs(FunctionType *FT, AttributeList Attrs,
 
     Assert(!Attrs.hasFnAttribute(Attribute::MinSize),
            "Attributes 'minsize and optnone' are incompatible!", V);
+
+    Assert(!Attrs.hasFnAttribute(Attribute::OptimizeNoneAll),
+           "Attributes 'optnoneall and optnone' are incompatible!", V);
+  }
+
+  if (Attrs.hasFnAttribute(Attribute::OptimizeNoneAll)) {
+    Assert(Attrs.hasFnAttribute(Attribute::NoInline),
+           "Attribute 'optnoneall' requires 'noinline'!", V);
+
+    Assert(!Attrs.hasFnAttribute(Attribute::OptimizeForSize),
+           "Attributes 'optsize and optnoneall' are incompatible!", V);
+
+    Assert(!Attrs.hasFnAttribute(Attribute::MinSize),
+           "Attributes 'minsize and optnoneall' are incompatible!", V);
   }
 
   if (Attrs.hasFnAttribute(Attribute::JumpTable)) {

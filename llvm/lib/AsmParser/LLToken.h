@@ -219,6 +219,7 @@ enum Kind {
   kw_null_pointer_is_valid,
   kw_optforfuzzing,
   kw_optnone,
+  kw_optnoneall,
   kw_optsize,
   kw_preallocated,
   kw_readnone,

@@ -1376,6 +1376,7 @@ bool LLParser::parseFnAttributeValuePairs(AttrBuilder &B,
     case lltok::kw_optforfuzzing:
       B.addAttribute(Attribute::OptForFuzzing); break;
     case lltok::kw_optnone: B.addAttribute(Attribute::OptimizeNone); break;
+    case lltok::kw_optnoneall: B.addAttribute(Attribute::OptimizeNoneAll); break;
     case lltok::kw_optsize: B.addAttribute(Attribute::OptimizeForSize); break;
     case lltok::kw_readnone: B.addAttribute(Attribute::ReadNone); break;
     case lltok::kw_readonly: B.addAttribute(Attribute::ReadOnly); break;
@@ -1786,6 +1787,7 @@ bool LLParser::parseOptionalParamAttrs(AttrBuilder &B) {
     case lltok::kw_nounwind:
     case lltok::kw_optforfuzzing:
     case lltok::kw_optnone:
+    case lltok::kw_optnoneall:
     case lltok::kw_optsize:
     case lltok::kw_returns_twice:
     case lltok::kw_sanitize_address:
@@ -1895,6 +1897,7 @@ bool LLParser::parseOptionalReturnAttrs(AttrBuilder &B) {
     case lltok::kw_nounwind:
     case lltok::kw_optforfuzzing:
     case lltok::kw_optnone:
+    case lltok::kw_optnoneall:
     case lltok::kw_optsize:
     case lltok::kw_returns_twice:
     case lltok::kw_sanitize_address:

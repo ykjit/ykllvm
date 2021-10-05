@@ -1698,9 +1698,30 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
   // We can't add optnone in the following cases, it won't pass the verifier.
   ShouldAddOptNone &= !D->hasAttr<MinSizeAttr>();
   ShouldAddOptNone &= !D->hasAttr<AlwaysInlineAttr>();
+  ShouldAddOptNone &= !D->hasAttr<OptimizeNoneAllAttr>();
 
-  // Add optnone, but do so only if the function isn't always_inline.
-  if ((ShouldAddOptNone || D->hasAttr<OptimizeNoneAttr>()) &&
+  bool ShouldAddOptNoneAll = D->hasAttr<OptimizeNoneAllAttr>();
+  ShouldAddOptNoneAll &= !D->hasAttr<MinSizeAttr>();
+  ShouldAddOptNoneAll &= !D->hasAttr<AlwaysInlineAttr>();
+
+  // Add optnone/optnoneall, but do so only if the function isn't
+  // always_inline.
+  if (ShouldAddOptNoneAll && !F->hasFnAttribute(llvm::Attribute::AlwaysInline)) {
+    B.addAttribute(llvm::Attribute::OptimizeNoneAll);
+
+    // OptimizeNoneAll implies noinline; we should not be inlining such functions.
+    B.addAttribute(llvm::Attribute::NoInline);
+
+    // We still need to handle naked functions even though optnone subsumes
+    // much of their semantics.
+    if (D->hasAttr<NakedAttr>())
+      B.addAttribute(llvm::Attribute::Naked);
+
+    // OptimizeNoneAll wins over OptimizeForSize, MinSize and OptNone.
+    F->removeFnAttr(llvm::Attribute::OptimizeForSize);
+    F->removeFnAttr(llvm::Attribute::MinSize);
+    F->removeFnAttr(llvm::Attribute::OptimizeNone);
+  } else if ((ShouldAddOptNone || D->hasAttr<OptimizeNoneAttr>()) &&
       !F->hasFnAttribute(llvm::Attribute::AlwaysInline)) {
     B.addAttribute(llvm::Attribute::OptimizeNone);
 

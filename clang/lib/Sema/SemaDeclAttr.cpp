@@ -4343,6 +4343,11 @@ AlwaysInlineAttr *Sema::mergeAlwaysInlineAttr(Decl *D,
     Diag(Optnone->getLocation(), diag::note_conflicting_attribute);
     return nullptr;
   }
+  if (OptimizeNoneAllAttr *Optnoneall = D->getAttr<OptimizeNoneAllAttr>()) {
+    Diag(CI.getLoc(), diag::warn_attribute_ignored) << Ident;
+    Diag(Optnoneall->getLocation(), diag::note_conflicting_attribute);
+    return nullptr;
+  }
 
   if (D->hasAttr<AlwaysInlineAttr>())
     return nullptr;
@@ -4417,6 +4422,11 @@ MinSizeAttr *Sema::mergeMinSizeAttr(Decl *D, const AttributeCommonInfo &CI) {
     Diag(Optnone->getLocation(), diag::note_conflicting_attribute);
     return nullptr;
   }
+  if (OptimizeNoneAllAttr *Optnoneall = D->getAttr<OptimizeNoneAllAttr>()) {
+    Diag(CI.getLoc(), diag::warn_attribute_ignored) << "'minsize'";
+    Diag(Optnoneall->getLocation(), diag::note_conflicting_attribute);
+    return nullptr;
+  }
 
   if (D->hasAttr<MinSizeAttr>())
     return nullptr;
@@ -4458,11 +4468,42 @@ OptimizeNoneAttr *Sema::mergeOptimizeNoneAttr(Decl *D,
     Diag(CI.getLoc(), diag::note_conflicting_attribute);
     D->dropAttr<MinSizeAttr>();
   }
+  if (D->getAttr<OptimizeNoneAllAttr>()) {
+    Diag(CI.getLoc(), diag::warn_attribute_ignored) << "'optnone'";
+    Diag(CI.getLoc(), diag::note_conflicting_attribute);
+    return nullptr;
+  }
 
   if (D->hasAttr<OptimizeNoneAttr>())
     return nullptr;
 
   return ::new (Context) OptimizeNoneAttr(Context, CI);
+}
+
+OptimizeNoneAllAttr *Sema::mergeOptimizeNoneAllAttr(Decl *D,
+                                              const AttributeCommonInfo &CI) {
+  if (AlwaysInlineAttr *Inline = D->getAttr<AlwaysInlineAttr>()) {
+    Diag(Inline->getLocation(), diag::warn_attribute_ignored) << Inline;
+    Diag(CI.getLoc(), diag::note_conflicting_attribute);
+    D->dropAttr<AlwaysInlineAttr>();
+  }
+  if (MinSizeAttr *MinSize = D->getAttr<MinSizeAttr>()) {
+    Diag(MinSize->getLocation(), diag::warn_attribute_ignored) << MinSize;
+    Diag(CI.getLoc(), diag::note_conflicting_attribute);
+    D->dropAttr<MinSizeAttr>();
+  }
+  if (OptimizeNoneAttr *OptimizeNone =
+      D->getAttr<OptimizeNoneAttr>()) {
+    Diag(OptimizeNone->getLocation(),
+        diag::warn_attribute_ignored) << OptimizeNone;
+    Diag(CI.getLoc(), diag::note_conflicting_attribute);
+    D->dropAttr<OptimizeNoneAttr>();
+  }
+
+  if (D->hasAttr<OptimizeNoneAllAttr>())
+    return nullptr;
+
+  return ::new (Context) OptimizeNoneAllAttr(Context, CI);
 }
 
 SpeculativeLoadHardeningAttr *Sema::mergeSpeculativeLoadHardeningAttr(
@@ -4490,6 +4531,11 @@ static void handleMinSizeAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
 static void handleOptimizeNoneAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
   if (OptimizeNoneAttr *Optnone = S.mergeOptimizeNoneAttr(D, AL))
     D->addAttr(Optnone);
+}
+
+static void handleOptimizeNoneAllAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+  if (OptimizeNoneAllAttr *Optnoneall = S.mergeOptimizeNoneAllAttr(D, AL))
+    D->addAttr(Optnoneall);
 }
 
 static void handleConstantAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
@@ -7791,6 +7837,9 @@ static void ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D,
     break;
   case ParsedAttr::AT_OptimizeNone:
     handleOptimizeNoneAttr(S, D, AL);
+    break;
+  case ParsedAttr::AT_OptimizeNoneAll:
+    handleOptimizeNoneAllAttr(S, D, AL);
     break;
   case ParsedAttr::AT_EnumExtensibility:
     handleEnumExtensibilityAttr(S, D, AL);

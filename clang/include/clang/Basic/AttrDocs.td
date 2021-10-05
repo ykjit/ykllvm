@@ -3098,6 +3098,14 @@ attributes.
   }];
 }
 
+def OptnoneallDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{
+The ``optnoneall`` attribute is similar to ``optnone``, but it also disables
+inter-procedural (IPO) optimisation passes.
+  }];
+}
+
 def LoopHintDocs : Documentation {
   let Category = DocCatStmt;
   let Heading = "#pragma clang loop";

@@ -55,6 +55,7 @@ static Attribute::AttrKind parseAttrKind(StringRef Kind) {
       .Case("nounwind", Attribute::NoUnwind)
       .Case("optforfuzzing", Attribute::OptForFuzzing)
       .Case("optnone", Attribute::OptimizeNone)
+      .Case("optnoneall", Attribute::OptimizeNoneAll)
       .Case("optsize", Attribute::OptimizeForSize)
       .Case("readnone", Attribute::ReadNone)
       .Case("readonly", Attribute::ReadOnly)

@@ -673,6 +673,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(null_pointer_is_valid);
   KEYWORD(optforfuzzing);
   KEYWORD(optnone);
+  KEYWORD(optnoneall);
   KEYWORD(optsize);
   KEYWORD(preallocated);
   KEYWORD(readnone);

@@ -1477,6 +1477,8 @@ static Attribute::AttrKind getAttrFromCode(uint64_t Code) {
     return Attribute::OptimizeForSize;
   case bitc::ATTR_KIND_OPTIMIZE_NONE:
     return Attribute::OptimizeNone;
+  case bitc::ATTR_KIND_OPTIMIZE_NONE_ALL:
+    return Attribute::OptimizeNoneAll;
   case bitc::ATTR_KIND_READ_NONE:
     return Attribute::ReadNone;
   case bitc::ATTR_KIND_READ_ONLY:

@@ -3300,6 +3300,8 @@ public:
                                     StringRef Name);
   OptimizeNoneAttr *mergeOptimizeNoneAttr(Decl *D,
                                           const AttributeCommonInfo &CI);
+  OptimizeNoneAllAttr *mergeOptimizeNoneAllAttr(Decl *D,
+                                          const AttributeCommonInfo &CI);
   InternalLinkageAttr *mergeInternalLinkageAttr(Decl *D, const ParsedAttr &AL);
   InternalLinkageAttr *mergeInternalLinkageAttr(Decl *D,
                                                 const InternalLinkageAttr &AL);

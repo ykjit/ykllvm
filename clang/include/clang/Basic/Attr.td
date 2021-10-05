@@ -2121,6 +2121,12 @@ def OptimizeNone : InheritableAttr {
   let Documentation = [OptnoneDocs];
 }
 
+def OptimizeNoneAll : InheritableAttr {
+  let Spellings = [Clang<"optnoneall">];
+  let Subjects = SubjectList<[Function, ObjCMethod]>;
+  let Documentation = [OptnoneallDocs];
+}
+
 def Overloadable : Attr {
   let Spellings = [Clang<"overloadable">];
   let Subjects = SubjectList<[Function], ErrorDiag>;

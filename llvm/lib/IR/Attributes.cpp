@@ -411,6 +411,8 @@ std::string Attribute::getAsString(bool InAttrGrp) const {
     return "optforfuzzing";
   if (hasAttribute(Attribute::OptimizeNone))
     return "optnone";
+  if (hasAttribute(Attribute::OptimizeNoneAll))
+    return "optnoneall";
   if (hasAttribute(Attribute::OptimizeForSize))
     return "optsize";
   if (hasAttribute(Attribute::ReadNone))

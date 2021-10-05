@@ -676,7 +676,12 @@ public:
   }
 
   /// Do not optimize this function (-O0).
-  bool hasOptNone() const { return hasFnAttribute(Attribute::OptimizeNone); }
+  bool hasOptNone() const {
+    return hasFnAttribute(Attribute::OptimizeNone) || hasFnAttribute(Attribute::OptimizeNoneAll);
+  }
+
+  /// Do not optimize this function. Not even inter-procedurally.
+  bool hasOptNoneAll() const { return hasFnAttribute(Attribute::OptimizeNoneAll); }
 
   /// Optimize this function for minimum size (-Oz).
   bool hasMinSize() const { return hasFnAttribute(Attribute::MinSize); }
