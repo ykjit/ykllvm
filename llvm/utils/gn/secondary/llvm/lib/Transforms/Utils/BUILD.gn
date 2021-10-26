@@ -77,5 +77,6 @@ static_library("Utils") {
     "Utils.cpp",
     "VNCoercion.cpp",
     "ValueMapper.cpp",
+    "YkControlPointPass.cpp",
   ]
 }

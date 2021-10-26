@@ -48,6 +48,7 @@
 #include "llvm/Transforms/Vectorize/LoopVectorize.h"
 #include "llvm/Transforms/Vectorize/SLPVectorizer.h"
 #include "llvm/Transforms/Vectorize/VectorCombine.h"
+#include "llvm/Transforms/Yk/ControlPoint.h"
 
 using namespace llvm;
 
@@ -176,6 +177,11 @@ cl::opt<AttributorRunOption> AttributorRun(
                           "enable call graph SCC attributor runs"),
                clEnumValN(AttributorRunOption::NONE, "none",
                           "disable attributor runs")));
+
+static cl::opt<bool>
+YkPatchCtrlPoint("yk-patch-control-point",
+  cl::init(false), cl::NotHidden,
+  cl::desc("Patch yk_control_point()"));
 
 extern cl::opt<bool> EnableKnowledgeRetention;
 
@@ -1202,6 +1208,13 @@ void PassManagerBuilder::populateLTOPassManager(legacy::PassManagerBase &PM) {
   addExtensionsToPM(EP_FullLinkTimeOptimizationLast, PM);
 
   PM.add(createAnnotationRemarksLegacyPass());
+
+  // We add the yk control point pass late in the pipeline (after all
+  // optimisation and just before verification and codegen) so that no IR
+  // optimisation passes have a chance to change the interface to the control
+  // point. The JIT runtime relies on the signature not being changed.
+  if (YkPatchCtrlPoint)
+    PM.add(createYkControlPointPass());
 
   if (VerifyOutput)
     PM.add(createVerifierPass());
