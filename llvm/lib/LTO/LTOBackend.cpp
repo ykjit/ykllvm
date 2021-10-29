@@ -46,6 +46,7 @@
 #include "llvm/Transforms/Scalar/LoopPassManager.h"
 #include "llvm/Transforms/Utils/FunctionImportUtils.h"
 #include "llvm/Transforms/Utils/SplitModule.h"
+#include "llvm/Transforms/Yk/ControlPoint.h"
 
 using namespace llvm;
 using namespace lto;
@@ -73,6 +74,11 @@ static cl::opt<bool> ThinLTOAssumeMerged(
     "thinlto-assume-merged", cl::init(false),
     cl::desc("Assume the input has already undergone ThinLTO function "
              "importing and the other pre-optimization pipeline changes."));
+
+static cl::opt<bool>
+YkPatchCtrlPoint("yk-patch-control-point",
+  cl::init(false), cl::NotHidden,
+  cl::desc("Patch yk_control_point()"));
 
 LLVM_ATTRIBUTE_NORETURN static void reportOpenError(StringRef Path, Twine Msg) {
   errs() << "failed to open " << Path << ": " << Msg << '\n';
@@ -299,6 +305,13 @@ static void runNewPMPasses(const Config &Conf, Module &Mod, TargetMachine *TM,
   } else {
     MPM.addPass(PB.buildLTODefaultPipeline(OL, ExportSummary));
   }
+
+  // We add the yk control point pass late in the pipeline (after all
+  // optimisation and just before verification and codegen) so that no IR
+  // optimisation passes have a chance to change the interface to the control
+  // point. The JIT runtime relies on the signature not being changed.
+  if (YkPatchCtrlPoint)
+    MPM.addPass(YkControlPointPass());
 
   if (!Conf.DisableVerify)
     MPM.addPass(VerifierPass());
