@@ -216,6 +216,7 @@ add_llvm_component_library(LLVMCodeGen
   Support
   Target
   TransformUtils
+  YkPasses
   )
 
 add_subdirectory(SelectionDAG)

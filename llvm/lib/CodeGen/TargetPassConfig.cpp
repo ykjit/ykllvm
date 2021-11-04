@@ -48,6 +48,7 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Utils/SymbolRewriter.h"
+#include "llvm/Transforms/Yk/BlockDisambiguate.h"
 #include <cassert>
 #include <string>
 
@@ -237,6 +238,10 @@ static cl::opt<bool> EnableMachineFunctionSplitter(
 static cl::opt<bool> DisableExpandReductions(
     "disable-expand-reductions", cl::init(false), cl::Hidden,
     cl::desc("Disable the expand reduction intrinsics pass from running"));
+
+static cl::opt<bool> YkBlockDisambiguate(
+    "yk-block-disambiguate", cl::init(false), cl::NotHidden,
+    cl::desc("Disambiguate blocks for yk"));
 
 /// Allow standard passes to be disabled by command line options. This supports
 /// simple binary flags that either suppress the pass or do nothing.
@@ -1060,6 +1065,8 @@ bool TargetPassConfig::addISelPasses() {
   addIRPasses();
   addCodeGenPrepare();
   addPassesToHandleExceptions();
+  if (YkBlockDisambiguate)
+    addPass(createYkBlockDisambiguatePass());
   addISelPrepare();
 
   return addCoreISelPasses();
