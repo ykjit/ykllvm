@@ -45,15 +45,16 @@
 // is shown as C code for easy comprehension.
 
 #include "llvm/Transforms/Yk/ControlPoint.h"
+#include "llvm/Analysis/LoopInfo.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
-#include <llvm/IR/Dominators.h>
-#include <llvm/IR/IRBuilder.h>
-#include <llvm/IR/Verifier.h>
 
 #define DEBUG_TYPE "yk-control-point"
 #define JIT_STATE_PREFIX "jit-state: "
@@ -121,8 +122,18 @@ public:
     // Get function containing the control point.
     Function *Caller = OldCtrlPointCall->getFunction();
 
-    // Find all live variables just before the call to the control point.
+    // Check that the control point is inside a loop.
     DominatorTree DT(*Caller);
+    const LoopInfo Loops(DT);
+    if (!std::any_of(Loops.begin(), Loops.end(), [OldCtrlPointCall](Loop *L) {
+          return L->contains(OldCtrlPointCall);
+        })) {
+      ;
+      Context.emitError("yk_control_point() must be called inside a loop.");
+      return false;
+    }
+
+    // Find all live variables just before the call to the control point.
     std::vector<Value *> LiveVals = getLiveVars(DT, OldCtrlPointCall);
     if (LiveVals.size() == 0) {
       Context.emitError(
