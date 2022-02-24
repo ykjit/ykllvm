@@ -2,6 +2,11 @@
 
 set -e
 
+# Buildbot will have done a shallow clone, but the formatting step requires
+# both full git history, and a complete set of upstream llvm release tags.
+git fetch --unshallow
+git fetch --tags https://github.com/llvm/llvm-project
+
 INST_DIR=`pwd`/inst
 
 mkdir -p build
@@ -14,17 +19,19 @@ cmake -DCMAKE_INSTALL_PREFIX=${INST_DIR} \
     ../llvm
 make -j `nproc` install
 
+# clang-format any new files that we've introduced ourselves.
+cd ..
+PATH=${INST_DIR}/bin:${PATH}
+sh yk_format_new_files.sh
+git diff --exit-code
+
 # There are many test suites for LLVM:
 # https://llvm.org/docs/TestingGuide.html
 #
 # This runs unit and integration tests.
+cd build
 make -j `nproc` check-all
 cd ..
-
-# clang-format any new files that we've introduced ourselves.
-PATH=${INST_DIR}/bin:${PATH}
-sh yk_format_new_files.sh
-git diff --exit-code
 
 # FIXME The commented code below should run the `test-suite` tests, as
 # described at https://llvm.org/docs/TestSuiteGuide.html.
