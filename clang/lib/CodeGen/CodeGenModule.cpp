@@ -1868,6 +1868,13 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
       B.addAttribute(llvm::Attribute::MinSize);
   }
 
+  if (D->hasAttr<YkOutlineAttr>()) {
+    // Prevent the Yk trace compiler from inlining the call.
+    B.addAttribute("yk_outline");
+    // Prevent LLVM from inlining the call when optimising the trace.
+    B.addAttribute(llvm::Attribute::NoInline);
+  }
+
   F->addAttributes(llvm::AttributeList::FunctionIndex, B);
 
   unsigned alignment = D->getMaxAlignment() / Context.getCharWidth();
