@@ -3823,3 +3823,10 @@ def EnforceTCBLeaf : InheritableAttr {
   let Documentation = [EnforceTCBLeafDocs];
   bit InheritEvenIfAlreadyPresent = 1;
 }
+
+def YkOutline : InheritableAttr {
+  let Spellings = [GCC<"yk_outline">, Declspec<"yk_outline">];
+  let Subjects = SubjectList<[Function]>;
+  let Documentation = [YkOutlineDocs];
+  let SimpleHandler = 1;
+}
