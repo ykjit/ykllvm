@@ -1819,7 +1819,7 @@ bool AsmPrinter::doFinalization(Module &M) {
   // waits until all optimisations/transformations have been run before
   // embedding the IR.
   if (EmbedBitcodeFinal)
-    llvm::EmbedBitcodeInModule(M, llvm::MemoryBufferRef(),
+    llvm::embedBitcodeInModule(M, llvm::MemoryBufferRef(),
                                /*EmbedBitcode*/ true,
                                /*EmbedCmdline*/ false,
                                /*CmdArgs*/ std::vector<uint8_t>());
