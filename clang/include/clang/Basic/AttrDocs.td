@@ -6263,3 +6263,11 @@ pointing to precise locations of the call site in the source.
   }
   }];
 }
+
+def YkOutlineDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{
+  The ``yk_outline`` attribute tells the Yk JIT to outline (not inline) calls
+  to the annotated function.
+  }];
+}
