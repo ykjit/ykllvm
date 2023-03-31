@@ -43,6 +43,8 @@
 
 using namespace llvm;
 
+extern bool YkStackMapOffsetFix;
+
 #define DEBUG_TYPE "regalloc"
 
 STATISTIC(NumFinished, "Number of splits finished");
@@ -680,8 +682,28 @@ SlotIndex SplitEditor::enterIntvAfter(SlotIndex Idx) {
   MachineInstr *MI = LIS.getInstructionFromIndex(Idx);
   assert(MI && "enterIntvAfter called with invalid index");
 
-  VNInfo *VNI = defFromParent(OpenIdx, ParentVNI, Idx, *MI->getParent(),
-                              std::next(MachineBasicBlock::iterator(MI)));
+  auto I = std::next(MachineBasicBlock::iterator(MI));
+  // This function appears to be responsible for inserting spill reloads after
+  // function calls. We don't want these to be inserted between a call and a
+  // stackmap instruction, so we adjust the insertion instruction `I` below to
+  // insert these reloads after the stackmap. This makes sure that both the
+  // offset reported in the stackmap is correct, and the variables tracked by
+  // the stackmap match the reported offset.
+  if (YkStackMapOffsetFix && MI->isCall()) {
+    // Use MCSymbol check to make sure this isn't an intrinsic.
+    bool IsMCSymbol = MI->getOperand(0).isMCSymbol();
+    if (!MI->isInlineAsm() && !IsMCSymbol &&
+        MI->getOpcode() != TargetOpcode::STACKMAP &&
+        MI->getOpcode() != TargetOpcode::PATCHPOINT) {
+      while (I->getOpcode() != TargetOpcode::STACKMAP) {
+        I++;
+      }
+      // Once we found STACKMAP, set the insertion point to the instruction
+      // after it.
+      I++;
+    }
+  }
+  VNInfo *VNI = defFromParent(OpenIdx, ParentVNI, Idx, *MI->getParent(), I);
   return VNI->def;
 }
 
