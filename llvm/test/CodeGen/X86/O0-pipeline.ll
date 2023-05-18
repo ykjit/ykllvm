@@ -32,6 +32,7 @@
 ; CHECK-NEXT:       Expand reduction intrinsics
 ; CHECK-NEXT:       Expand indirectbr instructions
 ; CHECK-NEXT:       Exception handling preparation
+; CHECK-NEXT:       Yk Promote Recorder
 ; CHECK-NEXT:       Safe Stack instrumentation pass
 ; CHECK-NEXT:       Insert stack protectors
 ; CHECK-NEXT:       Module Verifier

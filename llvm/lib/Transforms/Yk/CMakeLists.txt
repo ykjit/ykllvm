@@ -3,6 +3,7 @@ add_llvm_component_library(LLVMYkPasses
   ControlPoint.cpp
   Linkage.cpp
   LivenessAnalysis.cpp
+  PromoteRecorder.cpp
   StackMaps.cpp
   ShadowStack.cpp
 

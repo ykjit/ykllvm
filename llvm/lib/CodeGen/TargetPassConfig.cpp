@@ -51,6 +51,7 @@
 #include "llvm/Transforms/Yk/Linkage.h"
 #include "llvm/Transforms/Yk/ShadowStack.h"
 #include "llvm/Transforms/Yk/Stackmaps.h"
+#include "llvm/Transforms/Yk/PromoteRecorder.h"
 #include <cassert>
 #include <optional>
 #include <string>
@@ -1136,6 +1137,10 @@ bool TargetPassConfig::addISelPasses() {
   if (YkPatchCtrlPoint) {
     addPass(createYkControlPointPass());
   }
+
+  // Note: the Yk promote recorder pass must run before the Yk stackmap pass.
+  // This ensures the promote recorder calls get stackmaps.
+  addPass(createYkPromoteRecorderPass());
 
   if (YkLinkage) {
     addPass(createYkLinkagePass());

@@ -1018,6 +1018,53 @@ void CodeGenFunction::StartFunction(GlobalDecl GD, QualType RetTy,
 
   Builder.SetInsertPoint(EntryBB);
 
+  // If necessary, relay the `yk_promote` attribute down to the LLVM level.
+  if (FD) {
+    if (const auto *PromoteAttr = FD->getAttr<YkPromoteAttr>()) {
+      std::vector<size_t> PromoteArgs;
+      for (auto VarName: PromoteAttr->vars()) {
+        // Find the argument index of the (named) promoted variable.
+        bool FoundParam = false;
+        unsigned ArgIdx = 0;
+        for (unsigned P = 0; P < FD->getNumParams(); P++) {
+          const ParmVarDecl *Param = FD->getParamDecl(P);
+          if (Param->getName() == VarName) {
+            FoundParam = true;
+            break;
+          }
+          ArgIdx++;
+        }
+
+        if (FoundParam) {
+          // FIXME: we only support promotion of size_t for now.
+          if (FD->getParamDecl(ArgIdx)->getType().getCanonicalType() ==
+              getContext().getSizeType())
+          {
+            PromoteArgs.push_back(ArgIdx);
+          } else {
+            CGM.Error(Loc,
+                ("Invalid type (not size_t) for promoted variable: '" +
+                 VarName + "'").str());
+          }
+        } else {
+          CGM.Error(Loc,
+              ("Invalid promoted variable: '" + VarName + "'").str());
+        }
+      }
+
+      std::string AttrVal;
+      for (auto PA = PromoteArgs.begin(); PA != PromoteArgs.end(); PA++) {
+        if (PA != PromoteArgs.begin()) {
+          AttrVal += ",";
+        }
+        AttrVal += std::to_string(*PA);
+      }
+      // FIXME: eventually this should be a proper built-in LLVM attribute
+      // instead of a stringly typed ad-hoc one.
+      Fn->addFnAttr("yk_promote", AttrVal);
+    }
+  }
+
   // If we're checking the return value, allocate space for a pointer to a
   // precise source location of the checked return statement.
   if (requiresReturnValueCheck()) {

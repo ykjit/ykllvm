@@ -62,6 +62,7 @@
 ; GCN-O0-NEXT:        Lower SwitchInst's to branches
 ; GCN-O0-NEXT:        Lower invoke and unwind, for unwindless code generators
 ; GCN-O0-NEXT:        Remove unreachable blocks from the CFG
+; GCN-O0-NEXT:        Yk Promote Recorder
 ; GCN-O0-NEXT:        Post-Dominator Tree Construction
 ; GCN-O0-NEXT:        Dominator Tree Construction
 ; GCN-O0-NEXT:        Natural Loop Information
@@ -245,6 +246,7 @@
 ; GCN-O1-NEXT:        Lower SwitchInst's to branches
 ; GCN-O1-NEXT:        Lower invoke and unwind, for unwindless code generators
 ; GCN-O1-NEXT:        Remove unreachable blocks from the CFG
+; GCN-O1-NEXT:        Yk Promote Recorder
 ; GCN-O1-NEXT:        Dominator Tree Construction
 ; GCN-O1-NEXT:        Basic Alias Analysis (stateless AA impl)
 ; GCN-O1-NEXT:        Function Alias Analysis Results
@@ -541,6 +543,7 @@
 ; GCN-O1-OPTS-NEXT:        Lower SwitchInst's to branches
 ; GCN-O1-OPTS-NEXT:        Lower invoke and unwind, for unwindless code generators
 ; GCN-O1-OPTS-NEXT:        Remove unreachable blocks from the CFG
+; GCN-O1-OPTS-NEXT:        Yk Promote Recorder
 ; GCN-O1-OPTS-NEXT:        Dominator Tree Construction
 ; GCN-O1-OPTS-NEXT:        Basic Alias Analysis (stateless AA impl)
 ; GCN-O1-OPTS-NEXT:        Function Alias Analysis Results
@@ -845,6 +848,7 @@
 ; GCN-O2-NEXT:        Lower SwitchInst's to branches
 ; GCN-O2-NEXT:        Lower invoke and unwind, for unwindless code generators
 ; GCN-O2-NEXT:        Remove unreachable blocks from the CFG
+; GCN-O2-NEXT:        Yk Promote Recorder
 ; GCN-O2-NEXT:        Dominator Tree Construction
 ; GCN-O2-NEXT:        Basic Alias Analysis (stateless AA impl)
 ; GCN-O2-NEXT:        Function Alias Analysis Results
@@ -1162,6 +1166,7 @@
 ; GCN-O3-NEXT:        Lower SwitchInst's to branches
 ; GCN-O3-NEXT:        Lower invoke and unwind, for unwindless code generators
 ; GCN-O3-NEXT:        Remove unreachable blocks from the CFG
+; GCN-O3-NEXT:        Yk Promote Recorder
 ; GCN-O3-NEXT:        Dominator Tree Construction
 ; GCN-O3-NEXT:        Basic Alias Analysis (stateless AA impl)
 ; GCN-O3-NEXT:        Function Alias Analysis Results

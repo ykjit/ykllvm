@@ -1458,6 +1458,13 @@ def MustTail : StmtAttr {
   let Subjects = SubjectList<[ReturnStmt], ErrorDiag, "return statements">;
 }
 
+def YkPromote : InheritableAttr {
+  let Spellings = [GCC<"yk_promote">, Declspec<"yk_promote">];
+  let Args = [VariadicStringArgument<"Vars">];
+  let Documentation = [YkPromoteDocs];
+  let Subjects = SubjectList<[Function], ErrorDiag, "functions">;
+}
+
 def FastCall : DeclOrTypeAttr {
   let Spellings = [GCC<"fastcall">, Keyword<"__fastcall">,
                    Keyword<"_fastcall">];

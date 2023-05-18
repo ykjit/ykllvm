@@ -8122,6 +8122,23 @@ static void handleNoSanitizeAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
                                               Sanitizers.size()));
 }
 
+static void handleYkPromoteAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
+  std::vector<StringRef> Vars;
+
+  for (unsigned I = 0, E = AL.getNumArgs(); I != E; ++I) {
+    StringRef Name;
+    SourceLocation LiteralLoc;
+
+    if (!S.checkStringLiteralArgumentAttr(AL, I, Name, &LiteralLoc))
+      return;
+
+    Vars.push_back(Name);
+  }
+
+  D->addAttr(::new (S.Context)
+      YkPromoteAttr(S.Context, AL, Vars.data(), Vars.size()));
+}
+
 static void handleNoSanitizeSpecificAttr(Sema &S, Decl *D,
                                          const ParsedAttr &AL) {
   StringRef AttrName = AL.getAttrName()->getName();
@@ -9346,6 +9363,10 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
 
   case ParsedAttr::AT_UsingIfExists:
     handleSimpleAttribute<UsingIfExistsAttr>(S, D, AL);
+    break;
+
+  case ParsedAttr::AT_YkPromote:
+    handleYkPromoteAttr(S, D, AL);
     break;
   }
 }

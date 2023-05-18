@@ -6826,6 +6826,19 @@ def YkUnrollSafeDocs : Documentation {
   }];
 }
 
+def YkPromoteDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{
+  The ``yk_promote`` attribute tells the Yk JIT which named function arguments
+  should be promoted to constants during trace compilation.
+
+  E.g.:
+  ``__attribute__((yk_promote("x")) void f(size_t x, size_t y) { ... }``
+
+  Only `size_t` (or equivalent) arguments may be promoted.
+  }];
+}
+
 def ReadOnlyPlacementDocs : Documentation {
   let Category = DocCatType;
   let Content = [{This attribute is attached to a structure, class or union declaration.
