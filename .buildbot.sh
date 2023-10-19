@@ -58,6 +58,8 @@ cmake --build build --target check-all
 # are not available if LLVM is built without assertions (you'd get a linker
 # error).
 rm -rf build
+mkdir build
+cd build
 cmake -DCMAKE_INSTALL_PREFIX=${INST_DIR} \
     -DLLVM_INSTALL_UTILS=ON \
     -DCMAKE_BUILD_TYPE=release \
