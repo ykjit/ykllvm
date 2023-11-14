@@ -1122,6 +1122,10 @@ bool TargetPassConfig::addISelPasses() {
   if (YkShadowStack) {
     addPass(createYkShadowStackPass());
   }
+
+  if (TM->useEmulatedTLS()){
+    addPass(createLowerEmuTLSPass());
+  }
   // We insert the yk control point pass as late as possible. It has to run
   // before instruction selection (or the machine IR won't reflect our
   // patching), but after other passes which mutate the IR (e.g.
