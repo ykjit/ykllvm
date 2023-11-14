@@ -1122,7 +1122,9 @@ bool TargetPassConfig::addISelPasses() {
   if (YkShadowStack) {
     addPass(createYkShadowStackPass());
   }
-
+  // YKFIXME: This is a hack. The `createLowerEmuTLSPass` pass is already added above. 
+  // We need to add it again since we want to run it on the new thread-local ShadowStack instance 
+  // which is inserted after the original TLS pass has run.
   if (TM->useEmulatedTLS()){
     addPass(createLowerEmuTLSPass());
   }
