@@ -285,8 +285,8 @@ static cl::opt<bool>
                       cl::desc("Insert stackmaps for JIT deoptimisation"));
 
 static cl::opt<bool>
-    YkNoCallsInEntryBlocks("yk-no-calls-in-entryblocks", cl::init(false), cl::NotHidden,
-                      cl::desc("Ensure there are no calls in the entryblock."));
+    YkHelloWorldPass("yk-helloworld-pass", cl::init(false), cl::NotHidden,
+                      cl::desc("YkHelloWorldPass"));
 
 /// Allow standard passes to be disabled by command line options. This supports
 /// simple binary flags that either suppress the pass or do nothing.
@@ -1167,7 +1167,7 @@ bool TargetPassConfig::addISelPasses() {
     addPass(createYkStackmapsPass());
   }
 
-  if (true) {
+  if (YkHelloWorldPass) {
     addPass(createHelloWorldPass());
   }
 
