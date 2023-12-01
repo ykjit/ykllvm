@@ -54,6 +54,7 @@
 #include "llvm/Transforms/Yk/ShadowStack.h"
 #include "llvm/Transforms/Yk/Stackmaps.h"
 #include "llvm/Transforms/Yk/NoCallsInEntryBlocks.h"
+#include "llvm/Transforms/Yk/HelloWorldPass.h"
 #include <cassert>
 #include <optional>
 #include <string>
@@ -1164,6 +1165,10 @@ bool TargetPassConfig::addISelPasses() {
 
   if (YkInsertStackMaps) {
     addPass(createYkStackmapsPass());
+  }
+
+  if (true) {
+    addPass(createHelloWorldPass());
   }
 
   addISelPrepare();

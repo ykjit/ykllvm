@@ -6,6 +6,7 @@ add_llvm_component_library(LLVMYkPasses
   StackMaps.cpp
   ShadowStack.cpp
   NoCallsInEntryBlocks.cpp
+  HelloWorldPass.cpp
 
   DEPENDS
   intrinsics_gen
