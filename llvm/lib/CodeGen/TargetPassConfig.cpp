@@ -54,7 +54,7 @@
 #include "llvm/Transforms/Yk/ShadowStack.h"
 #include "llvm/Transforms/Yk/Stackmaps.h"
 #include "llvm/Transforms/Yk/NoCallsInEntryBlocks.h"
-#include "llvm/Transforms/Yk/HelloWorldPass.h"
+#include "llvm/Transforms/Yk/SoftwareTracer.h"
 #include <cassert>
 #include <optional>
 #include <string>
@@ -285,8 +285,8 @@ static cl::opt<bool>
                       cl::desc("Insert stackmaps for JIT deoptimisation"));
 
 static cl::opt<bool>
-    YkHelloWorldPass("yk-helloworld-pass", cl::init(false), cl::NotHidden,
-                      cl::desc("YkHelloWorldPass"));
+    YkSoftwareTracer("yk-software-tracer", cl::init(false), cl::NotHidden,
+                      cl::desc("Enables YK Software Tracer capability"));
 
 /// Allow standard passes to be disabled by command line options. This supports
 /// simple binary flags that either suppress the pass or do nothing.
@@ -1167,8 +1167,8 @@ bool TargetPassConfig::addISelPasses() {
     addPass(createYkStackmapsPass());
   }
 
-  if (YkHelloWorldPass) {
-    addPass(createHelloWorldPass());
+  if (YkSoftwareTracer) {
+    addPass(createSoftwareTracerPass());
   }
 
   addISelPrepare();

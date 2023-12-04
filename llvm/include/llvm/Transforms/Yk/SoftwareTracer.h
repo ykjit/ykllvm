@@ -4,7 +4,7 @@
 #include "llvm/Pass.h"
 
 namespace llvm {
-ModulePass *createHelloWorldPass();
+ModulePass *createSoftwareTracerPass();
 } // namespace llvm
 
 #endif
