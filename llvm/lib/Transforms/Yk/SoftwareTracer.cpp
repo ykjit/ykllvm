@@ -10,44 +10,37 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 
-#define DEBUG_TYPE "yk-software-tracer"
+#define DEBUG_TYPE "yk-software-tracer-pass"
 
 using namespace llvm;
 
 namespace {
-// void my_function() { printf("Hello from your_c_function!\n"); }
 
 struct SoftwareTracerPass : public ModulePass {
   static char ID;
-  Function *monitor;
+  Function *externalFunc = NULL;
 
   SoftwareTracerPass() : ModulePass(ID) {}
 
   bool runOnModule(Module &M) override {
     for (Module::iterator F = M.begin(), E = M.end(); F != E; ++F) {
-      llvm::StringRef ref = std::string("record_trace");
-      Function *calleeFunction =
-          M.getFunction(ref); // Find the function by name
-
+      LLVMContext &Context = M.getContext();
+      if (externalFunc == NULL) {
+        FunctionType *FType =
+            FunctionType::get(Type::getVoidTy(Context), {}, false);
+        externalFunc = Function::Create(FType, GlobalVariable::ExternalLinkage,
+                                        YK_TRACE_FUNCTION, M);
+      }
       for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
         for (BasicBlock::iterator BI = BB->begin(), BE = BB->end(); BI != BE;
              ++BI) {
-          if (calleeFunction) {
-            Argument *TempArg = F->getArg(0); // temp argument
-            Value *args[] = {TempArg};        // BI->getName()
-
-            Instruction *newInst = CallInst::Create(calleeFunction, args);
-
-            BasicBlock *BB = BI->getParent();
-            // TODO: understand how to insert new instruction
-            // Instruction::insertInto(BB, newInst); // works with iterator
-            // BB->getInstList().insert(BI, newInst); // deal with getInstList
-            // being private errs() << "Inserted the function!\n";
-          }
+          // Insert function call instruction
+          IRBuilder<> builder(Context);
+          builder.SetInsertPoint(&(*BI));
+          builder.CreateCall(externalFunc);
         }
       }
     }
-
     return true;
   }
 };
