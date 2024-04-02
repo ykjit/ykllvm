@@ -815,6 +815,11 @@ public:
         M, GlobalsArrayTy, true, GlobalValue::LinkageTypes::ExternalLinkage,
         ConstantArray::get(GlobalsArrayTy, GlobalsAsConsts));
     GlobalsArray->setName("__yk_globalvar_ptrs");
+    IntegerType *Int64Ty = Type::getInt64Ty(M.getContext());
+    GlobalVariable *GlobalsArrayLen = new GlobalVariable(
+        M, Int64Ty, true, GlobalValue::LinkageTypes::ExternalLinkage,
+        ConstantInt::get(Int64Ty, Globals.size()));
+    GlobalsArrayLen->setName("__yk_globalvar_len");
 
     // num_types:
     OutStreamer.emitSizeT(Types.size());
