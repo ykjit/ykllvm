@@ -49,6 +49,20 @@ struct YkBasicBlockTracer : public ModulePass {
         assert(BlockIndex != UINT32_MAX &&
                "Expected BlockIndex to not overflow");
         BlockIndex++;
+        for (auto &I : BB) {
+          if (auto *call = dyn_cast<CallInst>(&I)) {
+            if (call->isIndirectCall()) {
+              errs() << "Indirect call detected: " << call << "\n";
+              // Value *funcPtr = call->getCalledValue();
+              // Do something with funcPtr, e.g., print its name if possible
+              // if (funcPtr->hasName()) {
+              //   errs() << "@@@@ Function pointer name: " << funcPtr->getName() << "\n";
+              // } else {
+              //   errs() << "@@@@ Function pointer is an unnamed value\n";
+              // }
+            }
+          }
+        }
       }
       assert(FunctionIndex != UINT32_MAX &&
              "Expected FunctionIndex to not overflow");
