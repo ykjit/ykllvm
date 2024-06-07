@@ -43,10 +43,10 @@ static bool promoteMemoryToRegister(Function &F, DominatorTree &DT,
 
     // Find allocas that are safe to promote, by looking at all instructions in
     // the entry node
-    for (BasicBlock::iterator I = BB.begin(), E = --BB.end(); I != E; ++I)
-      if (AllocaInst *AI = dyn_cast<AllocaInst>(I)) // Is it an alloca?
-        if (isAllocaPromotable(AI))
-          Allocas.push_back(AI);
+    // for (BasicBlock::iterator I = BB.begin(), E = --BB.end(); I != E; ++I)
+    //   if (AllocaInst *AI = dyn_cast<AllocaInst>(I)) // Is it an alloca?
+    //     if (isAllocaPromotable(AI))
+    //       Allocas.push_back(AI);
 
     if (Allocas.empty())
       break;
