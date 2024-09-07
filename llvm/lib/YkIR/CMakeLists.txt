@@ -5,4 +5,6 @@ add_llvm_component_library(LLVMYkIR
   Core
   MC
   Support
+  TransformUtils
+  IRReader
   )

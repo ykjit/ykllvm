@@ -1786,6 +1786,41 @@ void emitStartOrEndSymbol(MCContext &MCtxt, MCStreamer &OutStreamer,
 
 namespace llvm {
 
+#include "llvm/IR/Module.h"
+#include "llvm/Transforms/Utils/Cloning.h"
+
+void clone(Module &M) {
+  errs() << "\n@@@@ [clone function] Original Module:" << M.getName() << "\n";
+  // Clone the module
+  std::unique_ptr<Module> ClonedModule = CloneModule(M);
+  std::string ClonedModuleName = M.getName().str();
+  ClonedModuleName.append(".clone");
+  ClonedModule->setModuleIdentifier(ClonedModuleName);
+
+  errs() << "@@@@ [clone function] Cloned Module: " << ClonedModule->getName() << "\n";
+
+
+  // Rename functions in the cloned module to avoid name conflicts
+  // for (Function &F : *ClonedModule) {
+  //   F.setName(F.getName() + ".clone");
+  // }
+  // for (GlobalVariable &GV : ClonedModule->globals()) {
+  //   // Change linkage to external
+  //   GV.setLinkage(GlobalValue::ExternalLinkage);
+  //   // Remove initializer
+  //   GV.setInitializer(nullptr);
+  //   // Rename to avoid conflicts
+  //   // GV.setName(GV.getName() + ".extern");
+  // }
+   // Link the cloned module back into the original module
+  // Linker L(M);
+  // if (L.linkInModule(std::move(ClonedModule))) {
+  //   errs() << "Error: Failed to link cloned module back into original module\n";
+  // } else {
+  //   errs() << "@@@@ Combined Module:\n";
+  //   M.dump();
+  // }
+}
 // Emit Yk IR into the resulting ELF binary.
 void embedYkIR(MCContext &Ctx, MCStreamer &OutStreamer, Module &M) {
   MCSection *YkIRSec =
@@ -1794,7 +1829,12 @@ void embedYkIR(MCContext &Ctx, MCStreamer &OutStreamer, Module &M) {
   OutStreamer.pushSection();
   OutStreamer.switchSection(YkIRSec);
   emitStartOrEndSymbol(Ctx, OutStreamer, true);
+  errs() << "\n@@@@ Original Module:" << M.getName() << "\n";
   YkIRWriter(M, OutStreamer).serialise();
+  clone(M);
+  
+  
+
   emitStartOrEndSymbol(Ctx, OutStreamer, false);
   OutStreamer.popSection();
 }
