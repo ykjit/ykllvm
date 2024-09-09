@@ -1788,52 +1788,51 @@ void emitStartOrEndSymbol(MCContext &MCtxt, MCStreamer &OutStreamer,
 
 namespace llvm {
 
-
-// #include "llvm/Linker/Linker.h"
-
 void printModule(Module &M) {
-  // M.print(llvm::outs(), nullptr);
-  llvm::outs() << "\nModule:" << M.getName() << "\n";
-  for (llvm::Function &F : M) {
-    llvm::outs() << "(Clone) Function name: " << F.getName() << "\n";
-  }
-  // for (llvm::GlobalVariable &Global : Module->globals()) {
-  //   llvm::outs() << "Global variable: " << Global.getName() << "\n";
+  M.print(llvm::outs(), nullptr);
+  // llvm::outs() << "\nModule:" << M.getName() << "\n";
+  // for (llvm::Function &F : M) {
+  //   llvm::outs() << "(Clone) Function name: " << F.getName() << "\n";
+  // }
+  // for (llvm::GlobalVariable &GV : M.globals()) {
+  //   // llvm::outs() << "Global variable: " << M.getName() << "\n";
+  //   llvm::outs() << "Global variable: " << GV.getName() << "\n";
+  //   llvm::outs() << " - Linkage: " << GV.getLinkage() << "\n";
   // }
 }
 
 void clone(Module &M) {
   std::unique_ptr<Module> ClonedModule = CloneModule(M);
   std::string ClonedModuleName = M.getName().str();
-  ClonedModuleName.append(".clone");
+  ClonedModuleName.append("_ykclone");
   ClonedModule->setModuleIdentifier(ClonedModuleName);
-  // Rename functions
   for (llvm::Function &F : *ClonedModule) {
     std::string FuncName = F.getName().str();
-    // TODO: do we need to check yk functions here?
-    // if (FuncName.find("__yk") != 0 || FuncName.find("yk_") || FuncName.find("llvm") == 0 ) {
     if (F.hasExternalLinkage() && F.isDeclaration()) {
-      // F.eraseFromParent();
       continue;
     }
     std::string NewName = F.getName().str() + ".cloned";
     F.setName(NewName);
   }
 
-  // TODO: Deal with global variables
+  // Set globals to be external
+  for (llvm::GlobalVariable &GV : ClonedModule->globals()) {
+    std::string GlobalName = GV.getName().str();
+    if (GlobalName.find('.') == 0){
+            continue; // This is likely not user-defined. Example: `.L.str`.
+    }
+    GV.setInitializer(nullptr);  // Remove the initializer
+    GV.setLinkage(llvm::GlobalValue::ExternalLinkage);  // Set external linkage
+  }
 
-  printModule(M);
-  llvm::outs() << "-------------------------------------------" << "\n";
-  printModule(*ClonedModule);
-
-  // Link the second module into the first
+  // Link the modules
   llvm::Linker TheLinker(M);
   if (TheLinker.linkInModule(std::move(ClonedModule))) {
         llvm::errs() << "Error: Linking the cloned module back into the original module failed.\n";
-    } else {
+  } else {
         llvm::outs() << "Successfully linked the cloned module back into the original module.\n";
-    }
   }
+  printModule(M);
 }
 
 // Emit Yk IR into the resulting ELF binary.
@@ -1848,4 +1847,5 @@ void embedYkIR(MCContext &Ctx, MCStreamer &OutStreamer, Module &M) {
   clone(M);
   emitStartOrEndSymbol(Ctx, OutStreamer, false);
   OutStreamer.popSection();
-} // namespace llvm
+}
+}// namespace llvm
