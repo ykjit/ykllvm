@@ -1794,7 +1794,6 @@ void cloneModule(Module &M) {
   if (!ClonedModule) {
     llvm::report_fatal_error(StringRef("attempt to clone module failed"));
   }
-  ClonedModule->setModuleIdentifier(ClonePrefix + M.getName().str());
   // Rename functions
   for (llvm::Function &F : *ClonedModule) {
     if (F.hasExternalLinkage() && F.isDeclaration()) {
