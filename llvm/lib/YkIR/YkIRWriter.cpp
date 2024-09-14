@@ -4,8 +4,6 @@
 //
 //===-------------------------------------------------------------------===//
 
-#include "llvm/Transforms/Utils/Cloning.h"
-#include "llvm/Linker/Linker.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Constant.h"
@@ -18,10 +16,12 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
 
 using namespace llvm;
@@ -1808,8 +1808,8 @@ void cloneModule(Module &M) {
     if (GlobalName.find('.') == 0) {
       continue; // This is likely not user-defined. Example: `.L.str`.
     }
-    GV.setInitializer(nullptr);                        
-    GV.setLinkage(llvm::GlobalValue::ExternalLinkage); 
+    GV.setInitializer(nullptr);
+    GV.setLinkage(llvm::GlobalValue::ExternalLinkage);
   }
 
   // Link both modules
