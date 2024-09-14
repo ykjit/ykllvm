@@ -3,6 +3,7 @@
 // Converts an LLVM module into Yk's on-disk AOT IR.
 //
 //===-------------------------------------------------------------------===//
+
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Analysis/ConstantFolding.h"
@@ -21,7 +22,6 @@
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/ErrorHandling.h"
-
 #include "llvm/Transforms/Yk/ControlPoint.h"
 
 using namespace llvm;
@@ -236,7 +236,7 @@ class FuncLowerCtxt {
 
 public:
   // Create an empty function lowering context.
-  FuncLowerCtxt() : VLMap(ValueLoweringMap()), InstIdxPatchUps({}){};
+  FuncLowerCtxt() : VLMap(ValueLoweringMap()), InstIdxPatchUps({}) {};
   // Maps argument operands to LoadArg instructions.
   map<Argument *, InstIdx> ArgumentMap;
 
@@ -1788,51 +1788,35 @@ void emitStartOrEndSymbol(MCContext &MCtxt, MCStreamer &OutStreamer,
 
 namespace llvm {
 
-void printModule(Module &M) {
-  M.print(llvm::outs(), nullptr);
-  // llvm::outs() << "\nModule:" << M.getName() << "\n";
-  // for (llvm::Function &F : M) {
-  //   llvm::outs() << "(Clone) Function name: " << F.getName() << "\n";
-  // }
-  // for (llvm::GlobalVariable &GV : M.globals()) {
-  //   // llvm::outs() << "Global variable: " << M.getName() << "\n";
-  //   llvm::outs() << "Global variable: " << GV.getName() << "\n";
-  //   llvm::outs() << " - Linkage: " << GV.getLinkage() << "\n";
-  // }
-}
-
 void clone(Module &M) {
+  const std::string ClonePrefix = "__yk_clone_";
   std::unique_ptr<Module> ClonedModule = CloneModule(M);
-  std::string ClonedModuleName = M.getName().str();
-  ClonedModuleName.append("_ykclone");
-  ClonedModule->setModuleIdentifier(ClonedModuleName);
+  if (!ClonedModule) {
+    llvm::report_fatal_error(StringRef("attempt to clone module failed"));
+  }
+  ClonedModule->setModuleIdentifier(ClonePrefix + M.getName().str());
+  // Rename functions
   for (llvm::Function &F : *ClonedModule) {
-    std::string FuncName = F.getName().str();
     if (F.hasExternalLinkage() && F.isDeclaration()) {
       continue;
     }
-    std::string NewName = F.getName().str() + ".cloned";
-    F.setName(NewName);
+    F.setName(ClonePrefix + F.getName().str());
   }
-
   // Set globals to be external
   for (llvm::GlobalVariable &GV : ClonedModule->globals()) {
     std::string GlobalName = GV.getName().str();
-    if (GlobalName.find('.') == 0){
-            continue; // This is likely not user-defined. Example: `.L.str`.
+    if (GlobalName.find('.') == 0) {
+      continue; // This is likely not user-defined. Example: `.L.str`.
     }
-    GV.setInitializer(nullptr);  // Remove the initializer
-    GV.setLinkage(llvm::GlobalValue::ExternalLinkage);  // Set external linkage
+    GV.setInitializer(nullptr);                        
+    GV.setLinkage(llvm::GlobalValue::ExternalLinkage); 
   }
 
-  // Link the modules
+  // Link both modules
   llvm::Linker TheLinker(M);
   if (TheLinker.linkInModule(std::move(ClonedModule))) {
-        llvm::errs() << "Error: Linking the cloned module back into the original module failed.\n";
-  } else {
-        llvm::outs() << "Successfully linked the cloned module back into the original module.\n";
+    llvm::report_fatal_error(StringRef("attempt to link modules failed"));
   }
-  printModule(M);
 }
 
 // Emit Yk IR into the resulting ELF binary.
@@ -1843,9 +1827,9 @@ void embedYkIR(MCContext &Ctx, MCStreamer &OutStreamer, Module &M) {
   OutStreamer.pushSection();
   OutStreamer.switchSection(YkIRSec);
   emitStartOrEndSymbol(Ctx, OutStreamer, true);
-  YkIRWriter(M, OutStreamer).serialise();
   clone(M);
+  YkIRWriter(M, OutStreamer).serialise();
   emitStartOrEndSymbol(Ctx, OutStreamer, false);
   OutStreamer.popSection();
 }
-}// namespace llvm
+} // namespace llvm
