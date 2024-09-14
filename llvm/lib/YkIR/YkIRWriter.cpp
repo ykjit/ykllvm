@@ -4,6 +4,8 @@
 //
 //===-------------------------------------------------------------------===//
 
+#include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/Linker/Linker.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Constant.h"
@@ -1786,6 +1788,37 @@ void emitStartOrEndSymbol(MCContext &MCtxt, MCStreamer &OutStreamer,
 
 namespace llvm {
 
+void cloneModule(Module &M) {
+  const std::string ClonePrefix = "__yk_clone_";
+  std::unique_ptr<Module> ClonedModule = CloneModule(M);
+  if (!ClonedModule) {
+    llvm::report_fatal_error(StringRef("attempt to clone module failed"));
+  }
+  ClonedModule->setModuleIdentifier(ClonePrefix + M.getName().str());
+  // Rename functions
+  for (llvm::Function &F : *ClonedModule) {
+    if (F.hasExternalLinkage() && F.isDeclaration()) {
+      continue;
+    }
+    F.setName(ClonePrefix + F.getName().str());
+  }
+  // Set globals to be external
+  for (llvm::GlobalVariable &GV : ClonedModule->globals()) {
+    std::string GlobalName = GV.getName().str();
+    if (GlobalName.find('.') == 0) {
+      continue; // This is likely not user-defined. Example: `.L.str`.
+    }
+    GV.setInitializer(nullptr);                        
+    GV.setLinkage(llvm::GlobalValue::ExternalLinkage); 
+  }
+
+  // Link both modules
+  llvm::Linker TheLinker(M);
+  if (TheLinker.linkInModule(std::move(ClonedModule))) {
+    llvm::report_fatal_error(StringRef("attempt to link modules failed"));
+  }
+}
+
 // Emit Yk IR into the resulting ELF binary.
 void embedYkIR(MCContext &Ctx, MCStreamer &OutStreamer, Module &M) {
   MCSection *YkIRSec =
@@ -1794,6 +1827,7 @@ void embedYkIR(MCContext &Ctx, MCStreamer &OutStreamer, Module &M) {
   OutStreamer.pushSection();
   OutStreamer.switchSection(YkIRSec);
   emitStartOrEndSymbol(Ctx, OutStreamer, true);
+  cloneModule(M);
   YkIRWriter(M, OutStreamer).serialise();
   emitStartOrEndSymbol(Ctx, OutStreamer, false);
   OutStreamer.popSection();
