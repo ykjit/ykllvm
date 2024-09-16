@@ -49,9 +49,6 @@ struct YkModuleClone : public ModulePass {
   }
 
   bool runOnModule(Module &M) override {
-    if (M.getName() == "src/perf/collect.c") {
-      return false;
-    }
     std::unique_ptr<Module> Cloned = CloneModule(M);
     if (!Cloned) {
       errs() << "Error: CloneModule returned null for module: " << M.getName()
