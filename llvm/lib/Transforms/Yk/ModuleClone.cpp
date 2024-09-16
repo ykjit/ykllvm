@@ -58,8 +58,7 @@ struct YkModuleClone : public ModulePass {
     updateClonedFunctions(*Cloned);
     updateClonedGlobals(*Cloned);
 
-    llvm::Linker TheLinker(M);
-    if (TheLinker.linkInModule(std::move(Cloned))) {
+    if (Linker::linkModules(M, std::move(Cloned))) {
       llvm::report_fatal_error("Error linking the modules");
       return false;
     }
