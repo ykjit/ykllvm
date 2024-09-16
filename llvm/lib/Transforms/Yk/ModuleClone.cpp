@@ -33,18 +33,20 @@ struct YkModuleClone : public ModulePass {
       if (F.hasExternalLinkage() && F.isDeclaration()) {
         continue;
       }
+      // Rename the function to avoid name conflicts
       F.setName(ClonePrefix + F.getName().str());
     }
   }
 
   void updateClonedGlobals(Module &M) {
     for (llvm::GlobalVariable &GV : M.globals()) {
-      std::string GlobalName = GV.getName().str();
-      if (GlobalName.find('.') == 0) {
+      if (GV.getName().str().find('.') == 0) {
         continue; // This is likely not user-defined. Example: `.L.str`.
       }
-      GV.setInitializer(nullptr); // Remove the initializer
-      GV.setLinkage(llvm::GlobalValue::ExternalLinkage); // Set external linkage
+      // Remove the initializer
+      GV.setInitializer(nullptr);
+      // Set external linkage
+      GV.setLinkage(llvm::GlobalValue::ExternalLinkage);
     }
   }
 
