@@ -1,4 +1,5 @@
 #include "llvm/Transforms/Yk/BasicBlockTracer.h"
+#include "llvm/Transforms/Yk/ModuleClone.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -42,6 +43,10 @@ struct YkBasicBlockTracer : public ModulePass {
     uint32_t FunctionIndex = 0;
     for (auto &F : M) {
       uint32_t BlockIndex = 0;
+      // Skip cloned functions
+      if (F.getName().startswith(YK_CLONE_PREFIX)) {
+        continue;
+      }
       for (auto &BB : F) {
         builder.SetInsertPoint(&*BB.getFirstInsertionPt());
         builder.CreateCall(TraceFunc, {builder.getInt32(FunctionIndex),

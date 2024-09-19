@@ -3,6 +3,8 @@
 
 #include "llvm/Pass.h"
 
+#define YK_CLONE_PREFIX "__yk_clone_"
+
 namespace llvm {
 ModulePass *createYkModuleClonePass();
 } // namespace llvm

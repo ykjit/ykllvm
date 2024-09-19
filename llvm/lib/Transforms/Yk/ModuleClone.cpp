@@ -1,4 +1,5 @@
 #include "llvm/Transforms/Yk/ModuleClone.h"
+#include "llvm/Transforms/Yk/BasicBlockTracer.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -22,7 +23,6 @@ void initializeYkModuleClonePass(PassRegistry &);
 namespace {
 struct YkModuleClone : public ModulePass {
   static char ID;
-  const std::string ClonePrefix = "__yk_clone_";
 
   YkModuleClone() : ModulePass(ID) {
     initializeYkModuleClonePass(*PassRegistry::getPassRegistry());
@@ -34,7 +34,7 @@ struct YkModuleClone : public ModulePass {
         continue;
       }
       // Rename the function to avoid name conflicts
-      F.setName(ClonePrefix + F.getName().str());
+      F.setName(YK_CLONE_PREFIX + F.getName().str());
     }
   }
 

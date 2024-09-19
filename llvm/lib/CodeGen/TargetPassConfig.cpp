@@ -1191,12 +1191,16 @@ bool TargetPassConfig::addISelPasses() {
     addPass(createYkStackmapsPass());
   }
 
+  // YkModuleClone Needs to run before YkBasicBlockTracerPass cause 
+  // YkBasicBlockTracerPass skips cloned functions.
+  if (YkModuleClone) {
+    addPass(createYkModuleClonePass());
+  }
+
   if (YkBasicBlockTracer) {
     addPass(createYkBasicBlockTracerPass());
   }
-  if (YkModuleClone){
-    addPass(createYkModuleClonePass());
-  }
+  
 
   addISelPrepare();
   return addCoreISelPasses();
