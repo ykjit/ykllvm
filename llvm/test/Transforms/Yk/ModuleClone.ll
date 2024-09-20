@@ -110,4 +110,3 @@ entry:
 ; CHECK-NEXT: %0 = call i32 @__yk_clone_my_func(i32 10)
 ; CHECK-NEXT: %1 = load i32, ptr @my_global
 ; CHECK-NEXT: %2 = call i32 (ptr, ...) @printf
-
