@@ -29,7 +29,6 @@ struct YkModuleClone : public ModulePass {
   }
 
   void updateClonedFunctions(Module &M) {
-    std::vector<Function *> functionsToRemove;
     for (llvm::Function &F : M) {
       if (F.hasExternalLinkage() && F.isDeclaration()) {
         continue;
