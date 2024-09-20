@@ -84,7 +84,7 @@ struct YkModuleClone : public ModulePass {
       llvm::report_fatal_error("Error linking the modules");
       return false;
     }
-    return false;
+    return true;
   }
 };
 } // namespace
