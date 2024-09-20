@@ -43,10 +43,12 @@ struct YkBasicBlockTracer : public ModulePass {
     uint32_t FunctionIndex = 0;
     for (auto &F : M) {
       uint32_t BlockIndex = 0;
+      // FIXME: This cause the ykjit to crash when executing compiled
+      // trace at: https://github.com/ykjit/yk/blob/master/ykrt/src/mt.rs#L366
       // Skip cloned functions
-      if (F.getName().startswith(YK_CLONE_PREFIX)) {
-        continue;
-      }
+      // if (F.getName().startswith(YK_CLONE_PREFIX)) {
+      //   continue;
+      // }
       for (auto &BB : F) {
         builder.SetInsertPoint(&*BB.getFirstInsertionPt());
         builder.CreateCall(TraceFunc, {builder.getInt32(FunctionIndex),
