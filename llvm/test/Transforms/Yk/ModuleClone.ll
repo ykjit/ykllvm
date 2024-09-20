@@ -1,4 +1,4 @@
-; RUN: llc -stop-after=yk-module-clone-pass --yk-module-clone < %s | FileCheck %s
+; RUN: llc -stop-after=yk-module-clone-pass --yk-module-clone < %s  | FileCheck %s
 
 source_filename = "ModuleClone.c"
 target triple = "x86_64-pc-linux-gnu"
@@ -57,32 +57,33 @@ entry:
 ; Check original function: my_func
 ; ===========================================
 ; CHECK-LABEL: define dso_local i32 @my_func(i32 %x)
-; CHECK: entry:
-; CHECK: %0 = add i32 %x, 1
-; CHECK: ret i32 %0
-
-; ===========================================
-; Check cloned function: __yk_clone_my_func
-; ===========================================
-; CHECK-LABEL: define dso_local i32 @__yk_clone_my_func(i32 %x)
-; CHECK: entry:
-; CHECK: %0 = add i32 %x, 1
-; CHECK: ret i32 %0
+; CHECK-NEXT: entry:
+; CHECK-NEXT: %0 = add i32 %x, 1
+; CHECK-NEXT: ret i32 %0
 
 ; ===========================================
 ; Check original function: main
 ; ===========================================
 ; CHECK-LABEL: define dso_local i32 @main()
-; CHECK: entry:
-; CHECK: %0 = call i32 @my_func(i32 10)
-; CHECK: %1 = load i32, ptr @my_global
-; CHECK: %2 = call i32 (ptr, ...) @printf
+; CHECK-NEXT: entry:
+; CHECK-NEXT: %0 = call i32 @my_func(i32 10)
+; CHECK-NEXT: %1 = load i32, ptr @my_global
+; CHECK-NEXT: %2 = call i32 (ptr, ...) @printf
+
+; ===========================================
+; Check cloned function: __yk_clone_my_func
+; ===========================================
+; CHECK-LABEL: define dso_local i32 @__yk_clone_my_func(i32 %x)
+; CHECK-NEXT: entry:
+; CHECK-NEXT: %0 = add i32 %x, 1
+; CHECK-NEXT: ret i32 %0
 
 ; ===========================================
 ; Check cloned function: __yk_clone_main
 ; ===========================================
 ; CHECK-LABEL: define dso_local i32 @__yk_clone_main()
-; CHECK: entry:
-; CHECK: %0 = call i32 @__yk_clone_my_func(i32 10)
-; CHECK: %1 = load i32, ptr @my_global
-; CHECK: %2 = call i32 (ptr, ...) @printf
+; CHECK-NEXT: entry:
+; CHECK-NEXT: %0 = call i32 @__yk_clone_my_func(i32 10)
+; CHECK-NEXT: %1 = load i32, ptr @my_global
+; CHECK-NEXT: %2 = call i32 (ptr, ...) @printf
+
