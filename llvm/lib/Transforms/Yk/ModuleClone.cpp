@@ -29,12 +29,17 @@ struct YkModuleClone : public ModulePass {
   }
 
   void updateClonedFunctions(Module &M) {
+    std::vector<Function*> functionsToRemove;
     for (llvm::Function &F : M) {
       if (F.hasExternalLinkage() && F.isDeclaration()) {
         continue;
       }
-      // Rename the function to avoid name conflicts
-      F.setName(YK_CLONE_PREFIX + F.getName().str());
+      // Skip functions that are address taken
+      if (!F.hasAddressTaken()) {
+        // Rename the function. This will lead to having multiple 
+        // verisons of the same function in the linked module.
+        F.setName(YK_CLONE_PREFIX + F.getName().str());
+      }
     }
   }
 
@@ -50,6 +55,17 @@ struct YkModuleClone : public ModulePass {
     }
   }
 
+
+
+  // This pass creates two distinct versions of the module functions. 
+  // It clones the module, updates functions and globals, and links the 
+  // cloned module to the original module.
+  // Functions:
+  // -  If function address is not taken, it is duplicated - resulting in 
+  //    two versions of that function in a module
+  // -  If functions address is taken, they remain as is.
+  // Globals:
+  // -  Global variables are not cloned.
   bool runOnModule(Module &M) override {
     std::unique_ptr<Module> Cloned = CloneModule(M);
     if (!Cloned) {
@@ -60,11 +76,15 @@ struct YkModuleClone : public ModulePass {
     updateClonedFunctions(*Cloned);
     updateClonedGlobals(*Cloned);
 
-    if (Linker::linkModules(M, std::move(Cloned))) {
+    // The `OverrideFromSrc` flag tells the linker to 
+    // prefer definitions from the source module (the 2nd argument) when
+    // there are conflicts. This means that if there are two functions 
+    // with the same name, the one from the Cloned module will be used.
+    if (Linker::linkModules(M, std::move(Cloned), Linker::Flags::OverrideFromSrc)) {
       llvm::report_fatal_error("Error linking the modules");
       return false;
     }
-    return true;
+    return false;
   }
 };
 } // namespace
