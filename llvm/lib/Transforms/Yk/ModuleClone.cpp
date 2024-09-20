@@ -10,7 +10,6 @@
 #include "llvm/Linker/Linker.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/Utils/Cloning.h"
-#include "llvm/Transforms/Yk/BasicBlockTracer.h"
 
 #define DEBUG_TYPE "yk-module-clone-pass"
 
