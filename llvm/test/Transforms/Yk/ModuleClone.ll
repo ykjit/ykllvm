@@ -15,10 +15,20 @@ declare dso_local i32 @fprintf(ptr noundef, ptr noundef, ...)
 declare dso_local void @yk_location_drop(i64)
 declare dso_local void @yk_mt_shutdown(ptr noundef)
 
-define dso_local i32 @my_func(i32 %x) {
+define dso_local i32 @func_inc_with_address_taken(i32 %x) {
 entry:
   %0 = add i32 %x, 1
   ret i32 %0
+}
+
+define dso_local i32 @my_func(i32 %x) {
+entry:
+  %0 = add i32 %x, 1
+  %func_ptr = alloca ptr, align 8
+  store ptr @func_inc_with_address_taken, ptr %func_ptr, align 8
+  %1 = load ptr, ptr %func_ptr, align 8
+  %2 = call i32 %1(i32 42)
+  ret i32 %2
 }
 
 define dso_local i32 @main() {
@@ -29,21 +39,19 @@ entry:
   ret i32 0
 }
 
-; ===========================================
+; ======================================================================
+; Original module 
+; ======================================================================
 ; File header checks
-; ===========================================
+
 ; CHECK: source_filename = "ModuleClone.c"
 ; CHECK: target triple = "x86_64-pc-linux-gnu"
 
-; ===========================================
 ; Global variable and string checks
-; ===========================================
 ; CHECK: @.str = private unnamed_addr constant [13 x i8] c"Hello, world\00", align 1
 ; CHECK: @my_global = global i32 42, align 4
 
-; ===========================================
 ; Declaration checks
-; ===========================================
 ; CHECK: declare i32 @printf(ptr, ...)
 ; CHECK: declare dso_local ptr @yk_mt_new(ptr noundef)
 ; CHECK: declare dso_local void @yk_mt_hot_threshold_set(ptr noundef, i32 noundef)
@@ -53,34 +61,50 @@ entry:
 ; CHECK: declare dso_local void @yk_location_drop(i64)
 ; CHECK: declare dso_local void @yk_mt_shutdown(ptr noundef)
 
-; ===========================================
 ; Check original function: my_func
-; ===========================================
 ; CHECK-LABEL: define dso_local i32 @my_func(i32 %x)
 ; CHECK-NEXT: entry:
 ; CHECK-NEXT: %0 = add i32 %x, 1
-; CHECK-NEXT: ret i32 %0
+; CHECK-NEXT: %func_ptr = alloca ptr, align 8
+; CHECK-NEXT: store ptr @func_inc_with_address_taken, ptr %func_ptr, align 8
+; CHECK-NEXT: %1 = load ptr, ptr %func_ptr, align 8
+; CHECK-NEXT: %2 = call i32 %1(i32 42)
+; CHECK-NEXT: ret i32 %2
 
-; ===========================================
 ; Check original function: main
-; ===========================================
 ; CHECK-LABEL: define dso_local i32 @main()
 ; CHECK-NEXT: entry:
 ; CHECK-NEXT: %0 = call i32 @my_func(i32 10)
 ; CHECK-NEXT: %1 = load i32, ptr @my_global
 ; CHECK-NEXT: %2 = call i32 (ptr, ...) @printf
 
-; ===========================================
-; Check cloned function: __yk_clone_my_func
-; ===========================================
-; CHECK-LABEL: define dso_local i32 @__yk_clone_my_func(i32 %x)
+; Check that func_inc_with_address_taken is present in its original form
+; CHECK-LABEL: define dso_local i32 @func_inc_with_address_taken(i32 %x)
 ; CHECK-NEXT: entry:
 ; CHECK-NEXT: %0 = add i32 %x, 1
 ; CHECK-NEXT: ret i32 %0
 
-; ===========================================
+; ======================================================================
+; Functions with taken address should be not cloned
+; ======================================================================
+; Check that function was not cloned
+; CHECK-NOT: define {{.*}} @_yk_clone_func_inc_with_address_taken
+
+; ======================================================================
+; Cloned functions
+; ======================================================================
+
+; Check cloned function: __yk_clone_my_func
+; CHECK-LABEL: define dso_local i32 @__yk_clone_my_func(i32 %x)
+; CHECK-NEXT: entry:
+; CHECK-NEXT: %0 = add i32 %x, 1
+; CHECK-NEXT: %func_ptr = alloca ptr, align 8
+; CHECK-NEXT: store ptr @func_inc_with_address_taken, ptr %func_ptr, align 8
+; CHECK-NEXT: %1 = load ptr, ptr %func_ptr, align 8
+; CHECK-NEXT: %2 = call i32 %1(i32 42)
+; CHECK-NEXT: ret i32 %2
+
 ; Check cloned function: __yk_clone_main
-; ===========================================
 ; CHECK-LABEL: define dso_local i32 @__yk_clone_main()
 ; CHECK-NEXT: entry:
 ; CHECK-NEXT: %0 = call i32 @__yk_clone_my_func(i32 10)
