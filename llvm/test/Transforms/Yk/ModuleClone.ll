@@ -40,10 +40,9 @@ entry:
 }
 
 ; ======================================================================
-; Original module 
+; Original functions
 ; ======================================================================
 ; File header checks
-
 ; CHECK: source_filename = "ModuleClone.c"
 ; CHECK: target triple = "x86_64-pc-linux-gnu"
 
@@ -85,15 +84,15 @@ entry:
 ; CHECK-NEXT: ret i32 %0
 
 ; ======================================================================
-; Functions with taken address should be not cloned
+; Functions whose addresses are taken should not be cloned
 ; ======================================================================
-; Check that function was not cloned
-; CHECK-NOT: define {{.*}} @_yk_clone_func_inc_with_address_taken
+; Functions with their addresses taken should not be cloned. 
+; `func_inc_with_address_taken` is used by pointer and thus remains unaltered.
+; CHECK-NOT: define dso_local i32 @__yk_clone_func_inc_with_address_taken
 
 ; ======================================================================
 ; Cloned functions
 ; ======================================================================
-
 ; Check cloned function: __yk_clone_my_func
 ; CHECK-LABEL: define dso_local i32 @__yk_clone_my_func(i32 %x)
 ; CHECK-NEXT: entry:
