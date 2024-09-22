@@ -1,4 +1,5 @@
 #include "llvm/Transforms/Yk/ModuleClone.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -36,7 +37,7 @@ struct YkModuleClone : public ModulePass {
       if (!F.hasAddressTaken()) {
         // Rename the function. This will lead to having multiple
         // verisons of the same function in the linked module.
-        F.setName(YK_CLONE_PREFIX + F.getName().str());
+        F.setName(Twine(YK_CLONE_PREFIX) + F.getName());
       }
     }
   }
