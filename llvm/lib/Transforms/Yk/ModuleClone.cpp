@@ -28,7 +28,6 @@ struct YkModuleClone : public ModulePass {
   YkModuleClone() : ModulePass(ID) {
     initializeYkModuleClonePass(*PassRegistry::getPassRegistry());
   }
-
   void updateClonedFunctions(Module &M) {
     for (llvm::Function &F : M) {
       if (F.hasExternalLinkage() && F.isDeclaration()) {
@@ -36,18 +35,17 @@ struct YkModuleClone : public ModulePass {
       }
       // Skip functions that are address taken
       if (!F.hasAddressTaken()) {
-        // Rename the function. This will lead to having multiple
-        // verisons of the same function in the linked module.
         F.setName(Twine(YK_CLONE_PREFIX) + F.getName());
       }
     }
   }
 
-  // This pass creates two versions for module functions.
-  // original.
-  // If function address is not taken, it is duplicated - resulting in
-  // two versions of that function in a module. If function address is
-  // taken, it remain in its original form.
+  // This pass duplicates functions within the module:
+  // the original and the cloned version.
+  // - If a function's address is not taken, it is cloned, resulting in 
+  //   two versions of that function in the module.
+  // - If a function's address is taken, the function remains in its 
+  //   original form.
   bool runOnModule(Module &M) override {
     std::unique_ptr<Module> Cloned = CloneModule(M);
     if (!Cloned) {
@@ -57,10 +55,11 @@ struct YkModuleClone : public ModulePass {
     }
     updateClonedFunctions(*Cloned);
 
-    // The `OverrideFromSrc` flag tells the linker to
-    // prefer definitions from the source module (the 2nd argument) when
-    // there are conflicts. This means that if there are two functions
-    // with the same name, the one from the Cloned module will be used.
+    // The `OverrideFromSrc` flag instructs the linker to prioritize
+    // definitions from the source module (the second argument) when
+    // conflicts arise. This means that if two functions have the same
+    // name in both the original and cloned modules, the version from
+    // the cloned module will overwrite the original.
     if (Linker::linkModules(M, std::move(Cloned),
                             Linker::Flags::OverrideFromSrc)) {
       llvm::report_fatal_error("Error linking the modules");
