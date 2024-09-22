@@ -1,4 +1,4 @@
-; RUN: llc -stop-after=yk-module-clone-pass --yk-module-clone < %s  | FileCheck %s
+; RUN: llc -stop-after=yk-basicblock-tracer-pass --yk-module-clone --yk-basicblock-tracer < %s  | FileCheck %s
 
 source_filename = "ModuleClone.c"
 target triple = "x86_64-pc-linux-gnu"
@@ -40,7 +40,7 @@ entry:
 }
 
 ; ======================================================================
-; Original functions
+; Original functions - should have trace calls
 ; ======================================================================
 ; File header checks
 ; CHECK: source_filename = "ModuleClone.c"
@@ -63,6 +63,7 @@ entry:
 ; Check original function: my_func
 ; CHECK-LABEL: define dso_local i32 @my_func(i32 %x)
 ; CHECK-NEXT: entry:
+; CHECK-NEXT: call void @__yk_trace_basicblock({{.*}})
 ; CHECK-NEXT: %0 = add i32 %x, 1
 ; CHECK-NEXT: %func_ptr = alloca ptr, align 8
 ; CHECK-NEXT: store ptr @func_inc_with_address_taken, ptr %func_ptr, align 8
@@ -73,6 +74,7 @@ entry:
 ; Check original function: main
 ; CHECK-LABEL: define dso_local i32 @main()
 ; CHECK-NEXT: entry:
+; CHECK-NEXT: call void @__yk_trace_basicblock({{.*}})
 ; CHECK-NEXT: %0 = call i32 @my_func(i32 10)
 ; CHECK-NEXT: %1 = load i32, ptr @my_global
 ; CHECK-NEXT: %2 = call i32 (ptr, ...) @printf
@@ -80,6 +82,7 @@ entry:
 ; Check that func_inc_with_address_taken is present in its original form
 ; CHECK-LABEL: define dso_local i32 @func_inc_with_address_taken(i32 %x)
 ; CHECK-NEXT: entry:
+; CHECK-NEXT: call void @__yk_trace_basicblock({{.*}})
 ; CHECK-NEXT: %0 = add i32 %x, 1
 ; CHECK-NEXT: ret i32 %0
 
@@ -91,11 +94,12 @@ entry:
 ; CHECK-NOT: define dso_local i32 @__yk_clone_func_inc_with_address_taken
 
 ; ======================================================================
-; Cloned functions
+; Cloned functions - should have no trace calls
 ; ======================================================================
 ; Check cloned function: __yk_clone_my_func
 ; CHECK-LABEL: define dso_local i32 @__yk_clone_my_func(i32 %x)
 ; CHECK-NEXT: entry:
+; CHECK-NOT: call void @__yk_trace_basicblock({{.*}})
 ; CHECK-NEXT: %0 = add i32 %x, 1
 ; CHECK-NEXT: %func_ptr = alloca ptr, align 8
 ; CHECK-NEXT: store ptr @func_inc_with_address_taken, ptr %func_ptr, align 8
@@ -106,6 +110,7 @@ entry:
 ; Check cloned function: __yk_clone_main
 ; CHECK-LABEL: define dso_local i32 @__yk_clone_main()
 ; CHECK-NEXT: entry:
+; CHECK-NOT: call void @__yk_trace_basicblock({{.*}})
 ; CHECK-NEXT: %0 = call i32 @__yk_clone_my_func(i32 10)
 ; CHECK-NEXT: %1 = load i32, ptr @my_global
 ; CHECK-NEXT: %2 = call i32 (ptr, ...) @printf
