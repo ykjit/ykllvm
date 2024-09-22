@@ -11,6 +11,7 @@
 #include "llvm/Linker/Linker.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/IR/Verifier.h"
 
 #define DEBUG_TYPE "yk-module-clone-pass"
 
@@ -65,6 +66,12 @@ struct YkModuleClone : public ModulePass {
       llvm::report_fatal_error("Error linking the modules");
       return false;
     }
+
+    if (verifyModule(M, &errs())) {
+      errs() << "Module verification failed!";
+      return false;
+    }
+
     return true;
   }
 };
