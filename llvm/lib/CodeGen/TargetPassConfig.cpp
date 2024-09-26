@@ -1186,17 +1186,16 @@ bool TargetPassConfig::addISelPasses() {
     }
     addPass(createYkSplitBlocksAfterCallsPass());
   }
+  // `YkModuleClone` needs to run before `YkBasicBlockTracerPass` and
+  // `YkInsertStackMaps` because they both skip cloned functions.
+  if (YkModuleClone) {
+    addPass(createYkModuleClonePass());
+  }
 
   if (YkInsertStackMaps) {
     addPass(createYkStackmapsPass());
   }
 
-  // YkModuleClonePass must run before YkBasicBlockTracerPass because
-  // YkBasicBlockTracerPass skips processing cloned functions based on
-  // function name prefix set by YkModuleClonePass.
-  if (YkModuleClone) {
-    addPass(createYkModuleClonePass());
-  }
   if (YkBasicBlockTracer) {
     addPass(createYkBasicBlockTracerPass());
   }

@@ -7,6 +7,7 @@
 // stop-gap interpreter.
 
 #include "llvm/Transforms/Yk/Stackmaps.h"
+#include "llvm/Transforms/Yk/ModuleClone.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -51,6 +52,9 @@ public:
     for (Function &F : M) {
       if (F.empty()) // skip declarations.
         continue;
+      if (F.getName().startswith(YK_CLONE_PREFIX)) // skip cloned functions
+        continue;
+
       LivenessAnalysis LA(&F);
       for (BasicBlock &BB : F) {
         for (Instruction &I : BB) {
