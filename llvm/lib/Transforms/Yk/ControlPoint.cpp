@@ -94,7 +94,7 @@ std::vector<CallInst *> findControlPointCalls(Module &M) {
   // Find all call sites of `yk_mt_control_point()`.
   for (User *U : CtrlPoint->users()) {
     if (CallInst *CI = dyn_cast<CallInst>(U)) {
-      controlPointCalls.push_back(CI);
+      controlPointCalls.insert(controlPointCalls.begin(), CI);
     }
   }
 
