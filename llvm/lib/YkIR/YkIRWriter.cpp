@@ -21,6 +21,7 @@
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
+#include "llvm/Transforms/Yk/ModuleClone.h"
 
 using namespace llvm;
 using namespace std;
@@ -1742,7 +1743,10 @@ public:
     OutStreamer.emitSizeT(M.size());
     // funcs:
     for (llvm::Function &F : M) {
-      serialiseFunc(F);
+      // Skip cloned functions
+      if (!StringRef(F.getName()).startswith(YK_CLONE_PREFIX)) {
+        serialiseFunc(F);
+      }
     }
 
     // num_constants:
