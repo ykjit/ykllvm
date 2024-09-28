@@ -1744,7 +1744,7 @@ public:
     // funcs:
     for (llvm::Function &F : M) {
       // Skip cloned functions
-      if (!StringRef(F.getName()).startswith(YK_CLONE_PREFIX)) {
+      if (StringRef(F.getName()).startswith(YK_CLONE_PREFIX)) {
         continue;
       }
       serialiseFunc(F);
