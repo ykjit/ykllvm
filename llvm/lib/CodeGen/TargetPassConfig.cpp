@@ -1143,6 +1143,11 @@ bool TargetPassConfig::addISelPasses() {
   addIRPasses();
   addCodeGenPrepare();
   addPassesToHandleExceptions();
+
+  if (YkModuleClone) {
+    addPass(createYkModuleClonePass());
+  }
+
   if (YkBlockDisambiguate)
     addPass(createYkBlockDisambiguatePass());
 
@@ -1185,11 +1190,6 @@ bool TargetPassConfig::addISelPasses() {
       report_fatal_error("--yk-split-blocks-after-calls requires --yk-no-calls-in-entryblocks.");
     }
     addPass(createYkSplitBlocksAfterCallsPass());
-  }
-  // `YkModuleClone` needs to run before `YkBasicBlockTracerPass` and
-  // `YkInsertStackMaps` because they both skip cloned functions.
-  if (YkModuleClone) {
-    addPass(createYkModuleClonePass());
   }
 
   if (YkInsertStackMaps) {
