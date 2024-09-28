@@ -1143,8 +1143,12 @@ bool TargetPassConfig::addISelPasses() {
   addIRPasses();
   addCodeGenPrepare();
   addPassesToHandleExceptions();
+  
+  // Default number of control points in a module.
+  int numberOfControlPoints = 1;
 
   if (YkModuleClone) {
+    numberOfControlPoints = YK_CLONE_MODULE_CP_COUNT;
     addPass(createYkModuleClonePass());
   }
 
@@ -1193,7 +1197,7 @@ bool TargetPassConfig::addISelPasses() {
   }
 
   if (YkInsertStackMaps) {
-    addPass(createYkStackmapsPass());
+    addPass(createYkStackmapsPass(numberOfControlPoints));
   }
 
   if (YkBasicBlockTracer) {
