@@ -1740,7 +1740,15 @@ public:
     OutStreamer.emitInt8(IdxBitWidth);
 
     // num_funcs:
-    OutStreamer.emitSizeT(M.size());
+    // Count non-cloned functions
+    unsigned numFuncs = 0;
+    for (const llvm::Function &F : M) {
+      if (!StringRef(F.getName()).startswith(YK_CLONE_PREFIX)) {
+        numFuncs++;
+      }
+    }
+    // Emit the number of non-cloned functions
+    OutStreamer.emitSizeT(numFuncs);
     // funcs:
     for (llvm::Function &F : M) {
       // Skip cloned functions
