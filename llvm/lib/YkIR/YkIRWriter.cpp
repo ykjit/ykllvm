@@ -659,7 +659,10 @@ private:
                          unsigned &InstIdx) {
     // Tail calls:
     //
-    // - The `tail` keyword is documented as ignorable, so we do.
+    // - The `tail` keyword is ignorable and merely means that the call *could*
+    //   be tail called, should an appropriate calling convention be used for
+    //   the call. It's safe for us to ignore this because we check the calling
+    //   convention of the call separately below.
     //
     // - The `notail` keyword just means don't add `tail` or `musttail`. I
     //   think this has no consequences for us.
@@ -674,11 +677,18 @@ private:
     AttributeList Attrs = I->getAttributes();
     for (unsigned AI = 0; AI < I->arg_size(); AI++) {
       for (auto &Attr : Attrs.getParamAttrs(AI)) {
-        // `nonull`, `noundef` and `dereferencable` are used a lot. I think
-        // for our purposes they can be safely ignored.
+        // `nonull`, `noundef`, `nounwind` and `dereferencable` are used a lot.
+        // I think for our purposes they can be safely ignored.
         if (((Attr.getKindAsEnum() == Attribute::NonNull) ||
              (Attr.getKindAsEnum() == Attribute::NoUndef) ||
+             (Attr.getKindAsEnum() == Attribute::NoUnwind) ||
              (Attr.getKindAsEnum() == Attribute::Dereferenceable))) {
+          continue;
+        }
+        // "indicates that the annotated function will always return at least a
+        // given number of bytes (or null)" -- not relevant for Yk at this
+        // time.
+        if (Attr.getKindAsEnum() == Attribute::AllocSize) {
           continue;
         }
         serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
@@ -1248,18 +1258,19 @@ private:
   void serialiseCastInst(CastInst *I, FuncLowerCtxt &FLCtxt, unsigned BBIdx,
                          unsigned &InstIdx) {
     // We don't support:
-    // - truncating ptrtoint
+    // - truncating ptrtoint/inttoptr
     // - any cast we've not thought about
     // - vector casts
     std::optional<CastKind> CK = getCastKind(I->getOpcode());
-    if (isa<PtrToIntInst>(I)) {
+    if (isa<PtrToIntInst>(I) || isa<IntToPtrInst>(I)) {
       TypeSize SrcSize = DL.getTypeSizeInBits(I->getSrcTy());
       TypeSize DstSize = DL.getTypeSizeInBits(I->getDestTy());
       if (DstSize < SrcSize) {
         serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
         return;
       }
-      // After excluding truncation from ptrtoint, it's just a zext in disguise.
+      // After excluding truncation from ptrtoint/inttoptr, it's just a zext in
+      // disguise.
       CK = CastKindZeroExt;
     }
     if (!CK.has_value() || (I->getOperand(0)->getType()->isVectorTy())) {
