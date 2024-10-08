@@ -305,7 +305,10 @@ private:
   vector<llvm::Type *> Types;
   vector<llvm::Constant *> Constants;
   vector<llvm::GlobalVariable *> Globals;
-
+  // Maps a function to its index. This is not the same as the index in
+  // the module's function list because we skip cloned functions in
+  // serialisation.
+  std::unordered_map<llvm::Function *, size_t> FunctionIndexMap;
   // File paths.
   vector<string> Paths;
 
@@ -365,9 +368,13 @@ private:
   }
 
   size_t functionIndex(llvm::Function *F) {
-    // FIXME: For now we assume that function indicies in LLVM IR and our IR
-    // are the same.
-    return getIndex(&M, F);
+    auto it = FunctionIndexMap.find(F);
+    if (it != FunctionIndexMap.end()) {
+      return it->second;
+    }
+    llvm::errs() << "Function not found in function index map: " << F->getName()
+                 << "\n";
+    llvm::report_fatal_error("Function not found in function index map");
   }
 
   // Serialises a null-terminated string.
@@ -1751,15 +1758,17 @@ public:
     OutStreamer.emitInt8(IdxBitWidth);
 
     // num_funcs:
-    // Count non-cloned functions
-    unsigned numFuncs = 0;
-    for (const llvm::Function &F : M) {
+    // Count functions for serilaisation and populate functions map
+    int functionCount = 0;
+    for (llvm::Function &F : M) {
+      // Skip cloned functions
       if (!StringRef(F.getName()).startswith(YK_CLONE_PREFIX)) {
-        numFuncs++;
+        FunctionIndexMap[&F] = functionCount;
+        functionCount++;
       }
     }
-    // Emit the number of non-cloned functions
-    OutStreamer.emitSizeT(numFuncs);
+    // Emit the number of functions
+    OutStreamer.emitSizeT(functionCount);
     // funcs:
     for (llvm::Function &F : M) {
       // Skip cloned functions
