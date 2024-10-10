@@ -75,6 +75,7 @@ public:
     // allocated for the shadow stack.
     Constant *GShadowStackPtr = M.getOrInsertGlobal(G_SHADOW_STACK, Int8PtrTy);
     GlobalVariable *GVar = M.getNamedGlobal(G_SHADOW_STACK);
+    GVar->setThreadLocal(true);
     GVar->setInitializer(
         ConstantPointerNull::get(cast<PointerType>(Int8PtrTy)));
 
