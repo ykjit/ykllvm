@@ -56,6 +56,7 @@
 #include "llvm/Transforms/Yk/Stackmaps.h"
 #include "llvm/Transforms/Yk/NoCallsInEntryBlocks.h"
 #include "llvm/Transforms/Yk/BasicBlockTracer.h"
+#include "llvm/Transforms/Yk/BasicBlockTracerNoop.h"
 #include "llvm/Transforms/Yk/ModuleClone.h"
 #include <cassert>
 #include <optional>
@@ -1143,7 +1144,6 @@ bool TargetPassConfig::addISelPasses() {
   addIRPasses();
   addCodeGenPrepare();
   addPassesToHandleExceptions();
-  
   // Default number of control points in a module.
   int numberOfControlPoints = 1;
 
@@ -1202,10 +1202,15 @@ bool TargetPassConfig::addISelPasses() {
 
   if (YkBasicBlockTracer) {
     addPass(createYkBasicBlockTracerPass());
-  }  
+  }
 
   addISelPrepare();
-  return addCoreISelPasses();
+  auto result = addCoreISelPasses();
+  if (YkBasicBlockTracer) {
+    addPass(createYkBasicBlockTracerNoopPass());
+  }
+
+  return result;
 }
 
 /// -regalloc=... command line option.
