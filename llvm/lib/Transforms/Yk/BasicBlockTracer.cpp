@@ -40,14 +40,24 @@ struct YkBasicBlockTracer : public ModulePass {
     Function *TraceFunc = Function::Create(
         FType, GlobalVariable::ExternalLinkage, YK_TRACE_FUNCTION, M);
 
+    Function *DummyTraceFunc = Function::Create(
+        FType, GlobalVariable::ExternalLinkage, YK_TRACE_FUNCTION_DUMMY, M);
+
     IRBuilder<> builder(Context);
     uint32_t FunctionIndex = 0;
     for (auto &F : M) {
       uint32_t BlockIndex = 0;
+
       for (auto &BB : F) {
         builder.SetInsertPoint(&*BB.getFirstInsertionPt());
-        builder.CreateCall(TraceFunc, {builder.getInt32(FunctionIndex),
+
+        if (F.getName().startswith(YK_CLONE_PREFIX)) {
+          builder.CreateCall(DummyTraceFunc, {builder.getInt32(FunctionIndex),
+                                              builder.getInt32(BlockIndex)});
+        } else {
+          builder.CreateCall(TraceFunc, {builder.getInt32(FunctionIndex),
                                          builder.getInt32(BlockIndex)});
+        }
         assert(BlockIndex != UINT32_MAX &&
                "Expected BlockIndex to not overflow");
         BlockIndex++;
@@ -58,10 +68,10 @@ struct YkBasicBlockTracer : public ModulePass {
     }
     return true;
   }
-  // Optional: Specify that the pass does not modify the control flow
-  void getAnalysisUsage(AnalysisUsage &AU) const override {
-    AU.setPreservesCFG();
-  }
+   void getAnalysisUsage(AnalysisUsage &AU) const override {
+      // AU.setPreservesCFG();
+      AU.setPreservesAll(); //if appropriate
+    }
 };
 } // namespace
 

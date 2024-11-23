@@ -1817,7 +1817,7 @@ public:
     serialisePaths();
     // line_info:
     serialiseLineInfo();
-    M.print(llvm::outs(), nullptr);
+    // M.print(llvm::outs(), nullptr);
   }
 };
 } // anonymous namespace

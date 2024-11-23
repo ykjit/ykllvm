@@ -6,6 +6,7 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Yk/BasicBlockTracer.h"
 #include "llvm/Transforms/Yk/ModuleClone.h"
+#include "llvm/Analysis/AliasAnalysis.h"
 
 #define DEBUG_TYPE "yk-basicblock-tracer-pass"
 
@@ -35,8 +36,7 @@ struct YkBasicBlockTracerNoop : public ModulePass {
             Function *CalledFunc = Call->getCalledFunction();
             if (!CalledFunc)
               continue; // Skip indirect calls
-            if (CalledFunc->getName() == YK_TRACE_FUNCTION) {
-              // Replace the call with a no-op by erasing it
+            if (CalledFunc->getName() == YK_TRACE_FUNCTION_DUMMY) {
               Call->eraseFromParent();
               Changed = true;
             }
@@ -45,17 +45,11 @@ struct YkBasicBlockTracerNoop : public ModulePass {
       }
     }
 
-    if (Changed) {
-      errs() << "Replaced tracing function calls with no-ops.\n";
-    } else {
-      errs() << "No tracing function calls found to replace.\n";
-    }
-
     return Changed;
   }
-  // Optional: Specify that the pass does not modify the control flow
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesCFG();
+    // AU.addPreserved<AAResultsWrapperPass>();
   }
 };
 } // namespace

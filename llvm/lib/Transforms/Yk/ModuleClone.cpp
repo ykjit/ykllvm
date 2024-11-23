@@ -77,7 +77,7 @@ struct YkModuleClone : public ModulePass {
       return false;
     }
     updateClonedFunctions(*Cloned);
-
+    // Cloned->print(llvm::outs(), nullptr);
     // The `OverrideFromSrc` flag instructs the linker to prioritise
     // definitions from the source module (the second argument) when
     // conflicts arise. This means that if two global variables, functions,
