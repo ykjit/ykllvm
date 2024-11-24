@@ -73,6 +73,7 @@ enum OpCode {
   OpCodeLoadArg,
   OpCodeFCmp,
   OpCodePromote,
+  OpCodeFNeg,
   OpCodeUnimplemented = 255, // YKFIXME: Will eventually be deleted.
 };
 
@@ -106,6 +107,7 @@ enum CastKind {
   CastKindSIToFP = 3,
   CastKindFPExt = 4,
   CastKindFPToSI = 5,
+  CastKindBitCast = 6
 };
 
 // A predicate used in an integer comparison.
@@ -698,6 +700,19 @@ private:
         if (Attr.getKindAsEnum() == Attribute::AllocSize) {
           continue;
         }
+
+        if (Attr.getKindAsEnum() == Attribute::Alignment) {
+          // Following what we do with loads/stores, we accept any alignment
+          // value greater-than or equal-to the size of the object.
+          //
+          // FIXME: explicitly encode the alignment requirements into the IR
+          // and let the JIT codegen deal with it.
+          if (I->getParamAlign(AI) >=
+              DL.getTypeAllocSize(I->getArgOperand(AI)->getType())) {
+            continue;
+          }
+        }
+
         serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
         return;
       }
@@ -1255,6 +1270,8 @@ private:
       return CastKindTrunc;
     case Instruction::FPToSI:
       return CastKindFPToSI;
+    case Instruction::BitCast:
+      return CastKindBitCast;
     default:
       return nullopt;
     }
@@ -1366,6 +1383,21 @@ private:
     InstIdx++;
   }
 
+  void serialiseUnaryOperatorInst(UnaryOperator *I, FuncLowerCtxt &FLCtxt,
+                                  unsigned BBIdx, unsigned &InstIdx) {
+    if (I->getOpcode() == UnaryOperator::UnaryOps::FNeg) {
+      // opcode:
+      serialiseOpcode(OpCodeFNeg);
+      // value:
+      serialiseOperand(I, FLCtxt, I->getOperand(0));
+
+      FLCtxt.updateVLMap(I, InstIdx);
+      InstIdx++;
+    } else {
+      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
+    }
+  }
+
   size_t getPathIndex(string Path) {
     vector<string>::iterator It = std::find(Paths.begin(), Paths.end(), Path);
     if (It != Paths.end()) {
@@ -1447,6 +1479,7 @@ private:
     INST_SERIALISE(I, StoreInst, serialiseStoreInst);
     INST_SERIALISE(I, SwitchInst, serialiseSwitchInst);
     INST_SERIALISE(I, SelectInst, serialiseSelectInst);
+    INST_SERIALISE(I, UnaryOperator, serialiseUnaryOperatorInst);
 
     // INST_SERIALISE does an early return upon a match, so if we get here then
     // the instruction wasn't handled.
