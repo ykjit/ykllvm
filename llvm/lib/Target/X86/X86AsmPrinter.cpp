@@ -90,6 +90,22 @@ void killRegister(const Register DwReg, std::map<Register, std::set<int64_t>> &S
     clearRhs(DwReg, SpillMap);
 }
 
+/// Go up the super-register chain until we hit a valid dwarf register number.
+///
+/// This is fallible verion of getDwarfRegNum() from Stackmaps.cpp. Returns < 0
+/// if the register has no DWARF number.
+int getDwarfRegNumFallible(unsigned Reg, const TargetRegisterInfo *TRI) {
+  int RegNum;
+  for (MCPhysReg SR : TRI->superregs_inclusive(Reg)) {
+    RegNum = TRI->getDwarfRegNum(SR, false);
+    if (RegNum >= 0)
+      break;
+  }
+  // In Stackmaps.cpp there was an assertion here checking RegNum >= 0 and the
+  // return value was casted unsigned.
+  return RegNum;
+}
+
 /// Given a MachineBasicBlock, analyse its instructions to build a mapping of
 /// where duplicate values live. This can be either in another register or on
 /// the stack. Since registers are always positive and stack offsets negative,
@@ -203,10 +219,14 @@ void processInstructions(
     // return value in RAX).
     for (const MachineOperand MO : Instr.all_defs()) {
       assert(MO.isReg() && "Is register.");
-      if (MO.getReg() == X86::SSP) {
+      int DwReg = getDwarfRegNumFallible(MO.getReg(), TRI);
+      if (DwReg < 0) {
+        // DWARF doesn't assign this register a number. This happens for
+        // some niche registers like DF, SSP, FPSW. If we are required to
+        // restore these for correct deopt then we are out of luck: stackmaps
+        // speak DWARF, but these registers have no DWARF number. Eek!
         continue;
       }
-      auto DwReg = getDwarfRegNum(MO.getReg(), TRI);
       killRegister(DwReg, SpillMap);
     }
 
