@@ -237,7 +237,7 @@ void processInstructions(
     // YKOPT: use `all_uses()` to kill implicit uses too?
     for (const MachineOperand MO : Instr.uses()) {
       if (MO.isReg() && (MO.isKill() || MO.isDef())) {
-        int DwReg = MRI->getDwarfRegNum(MO.getReg(), false);
+        int DwReg = getDwarfRegNumFallible(MO.getReg(), TRI);
         if (DwReg >= 0) {
           killRegister(DwReg, SpillMap);
         }
