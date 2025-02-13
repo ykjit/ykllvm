@@ -112,6 +112,11 @@ int getDwarfRegNumFallible(unsigned Reg, const TargetRegisterInfo *TRI) {
 /// we can store both in the same map while still being able to distinguish
 /// them. This allows us to keep the changes in Stackmaps.cpp to a minimum and
 /// avoids having to alter the stackmap format.
+///
+/// FIXME: the algorithm is implemented with hashmaps which makes it more
+/// complicated than it needs to be. We think this would be better implemented
+/// using union find to store disjoint sets of "alised" locations.
+/// https://github.com/ykjit/yk/issues/1602
 void processInstructions(
     const MachineBasicBlock *MBB,
     std::map<Register, std::set<int64_t>> &SpillMap,
@@ -190,6 +195,12 @@ void processInstructions(
         // the register. We do, however, now need to remove all previous
         // mappings to this offset (unless the other mapping contains `DwReg`).
         clearOffset(DwReg, Offset, SpillMap);
+        for (int64_t Rhs : SpillMap[DwReg]) {
+          // Apply offset transitively to the other mappings.
+          if (Rhs >= 0) {
+            SpillMap[Rhs].insert(Offset);
+          }
+        }
         SpillMap[DwReg].insert(Offset);
       }
       // YKOPT: we can also remove killed registers, if any.
