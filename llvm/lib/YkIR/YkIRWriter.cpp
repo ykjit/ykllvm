@@ -1186,7 +1186,7 @@ private:
       LP = FCmpUnorderedLess;
       break;
     case llvm::CmpInst::FCMP_ULE:
-      LP = FCmpOrderedLessEqual;
+      LP = FCmpUnorderedLessEqual;
       break;
     case llvm::CmpInst::FCMP_UNE:
       LP = FCmpUnorderedNotEqual;
