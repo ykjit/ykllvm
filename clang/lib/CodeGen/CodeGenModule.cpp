@@ -52,6 +52,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/YkIR/YkIRWriter.h"
 #include "llvm/Frontend/OpenMP/OMPIRBuilder.h"
 #include "llvm/IR/AttributeMask.h"
 #include "llvm/IR/CallingConv.h"
@@ -72,6 +73,7 @@
 #include "llvm/Support/xxhash.h"
 #include "llvm/TargetParser/Triple.h"
 #include "llvm/TargetParser/X86TargetParser.h"
+#include "llvm/Transforms/Yk/Idempotent.h"
 #include <optional>
 
 using namespace clang;
@@ -2412,7 +2414,13 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
 
   if (D->hasAttr<YkOutlineAttr>()) {
     B.addAttribute(llvm::Attribute::NoInline);
-    B.addAttribute("yk_outline");
+    B.addAttribute(YK_OUTLINE_FNATTR);
+  }
+
+  if (D->hasAttr<YkIdempotentAttr>()) {
+    B.addAttribute(llvm::Attribute::NoInline);
+    B.addAttribute(YK_OUTLINE_FNATTR);
+    B.addAttribute(YK_IDEMPOTENT_FNATTR);
   }
 
   // Mark all functions containing loops with `yk_outline` unless the function
@@ -2429,7 +2437,7 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
     llvm::LoopInfo LI(DT);
     if (!LI.empty()) {
       if (!D->hasAttr<YkUnrollSafeAttr>())
-        B.addAttribute("yk_outline");
+        B.addAttribute(YK_OUTLINE_FNATTR);
 
       // Note that we still mark the loopy function `F` with `noinline` (to
       // block it being inlined during AOT compilation) regardless of if it can

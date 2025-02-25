@@ -7191,6 +7191,11 @@ def YkOutlineDocs : Documentation {
   }];
 }
 
+def YkIdempotentDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{tells the yk trace optimiser that this function is idempotent}];
+}
+
 def YkUnrollSafeDocs : Documentation {
   let Category = DocCatFunction;
   let Content = [{
