@@ -33,6 +33,9 @@ using namespace std;
 // where live variables to include in the stackmap entry start.
 const int PPArgIdxNumTargetArgs = 3;
 
+// Function flags.
+const uint8_t YkFuncFlagOutline = 1;
+
 #include <sstream>
 
 namespace {
@@ -1597,13 +1600,21 @@ private:
     OutStreamer.emitSizeT(typeIndex(A->getType()));
   }
 
+  void serialiseFuncFlags(llvm::Function &F) {
+    uint8_t Flags = 0;
+    if (F.hasFnAttribute(YK_OUTLINE_FNATTR)) {
+      Flags |= YkFuncFlagOutline;
+    }
+    OutStreamer.emitInt8(Flags);
+  }
+
   void serialiseFunc(llvm::Function &F) {
     // name:
     serialiseString(F.getName());
     // type_idx:
     OutStreamer.emitSizeT(typeIndex(F.getFunctionType()));
-    // outline:
-    OutStreamer.emitInt8(F.hasFnAttribute(YK_OUTLINE_FNATTR));
+    // flags:
+    serialiseFuncFlags(F);
     // num_blocks:
     OutStreamer.emitSizeT(F.size());
     // blocks:
