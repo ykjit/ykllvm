@@ -123,6 +123,18 @@ struct CreateYkPatchCtrlPointParser {
 } // namespace
 static ManagedStatic<cl::opt<bool, true>, CreateYkPatchCtrlPointParser> YkPatchCtrlPointParser;
 
+bool YkPatchIdempotent;
+namespace {
+struct CreateYkPatchIdempotentParser {
+  static void *call() {
+    return new cl::opt<bool, true>(
+        "yk-patch-idempotent",
+        cl::desc("Patch in idempotent function recorders"),
+        cl::NotHidden, cl::location(YkPatchIdempotent));
+  }
+};
+} // namespace
+static ManagedStatic<cl::opt<bool, true>, CreateYkPatchIdempotentParser> YkPatchIdempotentParser;
 
 void llvm::initYkOptions() {
   *YkExtendedLLVMBBAddrMapSectionParser;
@@ -133,4 +145,5 @@ void llvm::initYkOptions() {
   *YkEmbedIRParser;
   *YkDontOptFuncABIParser;
   *YkPatchCtrlPointParser;
+  *YkPatchIdempotentParser;
 }
