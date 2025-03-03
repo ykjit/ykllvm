@@ -4,6 +4,7 @@
 //
 //===-------------------------------------------------------------------===//
 
+#include "llvm/YkIR/YkIRWriter.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Constant.h"
@@ -21,6 +22,7 @@
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
+#include "llvm/Transforms/Yk/Idempotent.h"
 #include "llvm/Transforms/Yk/ModuleClone.h"
 
 using namespace llvm;
@@ -35,6 +37,7 @@ const int PPArgIdxNumTargetArgs = 3;
 
 // Function flags.
 const uint8_t YkFuncFlagOutline = 1;
+const uint8_t YkFuncFlagIdempotent = 2;
 
 #include <sstream>
 
@@ -49,9 +52,10 @@ public:
   string &what() { return S; }
 };
 
-#define YK_OUTLINE_FNATTR "yk_outline"
 #define YK_PROMOTE_PREFIX "__yk_promote"
 #define YK_DEBUG_STR "yk_debug_str"
+#define YK_IDEMPOTENT_PREFIX "__yk_idempotent_promote"
+
 const char *SectionName = ".yk_ir";
 const uint32_t Magic = 0xedd5f00d;
 const uint32_t Version = 0;
@@ -79,6 +83,7 @@ enum OpCode {
   OpCodePromote,
   OpCodeFNeg,
   OpCodeDebugStr,
+  OpCodePromoteIdempotent,
   OpCodeUnimplemented = 255, // YKFIXME: Will eventually be deleted.
 };
 
@@ -646,6 +651,20 @@ private:
     InstIdx++;
   }
 
+  void serialiseIdempotentPromotion(CallInst *I, FuncLowerCtxt &FLCtxt,
+                                    unsigned &InstIdx) {
+    assert(I->arg_size() == 1);
+    // opcode:
+    serialiseOpcode(OpCodePromoteIdempotent);
+    // type_idx:
+    OutStreamer.emitSizeT(typeIndex(I->getOperand(0)->getType()));
+    // value:
+    serialiseOperand(I, FLCtxt, I->getOperand(0));
+
+    FLCtxt.updateVLMap(I, InstIdx);
+    InstIdx++;
+  }
+
   void serialiseDebugStr(CallInst *I, FuncLowerCtxt &FLCtxt,
                          unsigned &InstIdx) {
     // We expect one argument: a `char *`.
@@ -799,8 +818,14 @@ private:
       return;
     }
 
+    // Calls to functions that promote runtime values are given their own
+    // bytecodes so that they can more be easily identified.
     if (I->getCalledFunction()->getName().startswith(YK_PROMOTE_PREFIX)) {
       serialisePromotion(I, FLCtxt, InstIdx);
+      return;
+    }
+    if (I->getCalledFunction()->getName().startswith(YK_IDEMPOTENT_PREFIX)) {
+      serialiseIdempotentPromotion(I, FLCtxt, InstIdx);
       return;
     }
 
@@ -1604,6 +1629,9 @@ private:
     uint8_t Flags = 0;
     if (F.hasFnAttribute(YK_OUTLINE_FNATTR)) {
       Flags |= YkFuncFlagOutline;
+    }
+    if (F.hasFnAttribute(YK_IDEMPOTENT_FNATTR)) {
+      Flags |= YkFuncFlagIdempotent;
     }
     OutStreamer.emitInt8(Flags);
   }

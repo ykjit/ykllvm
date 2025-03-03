@@ -4241,6 +4241,13 @@ def YkOutline : InheritableAttr {
   let SimpleHandler = 1;
 }
 
+def YkIdempotent : InheritableAttr {
+  let Spellings = [GCC<"yk_idempotent">, Declspec<"yk_idempotent">];
+  let Subjects = SubjectList<[Function]>;
+  let Documentation = [YkIdempotentDocs];
+  let SimpleHandler = 1;
+}
+
 def YkUnrollSafe : InheritableAttr {
   let Spellings = [GCC<"yk_unroll_safe">, Declspec<"yk_unroll_safe">];
   let Subjects = SubjectList<[Function]>;

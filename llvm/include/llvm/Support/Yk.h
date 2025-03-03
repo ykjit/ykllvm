@@ -10,5 +10,6 @@ void initYkOptions(void);
 extern bool YkOptNoneAfterIRPasses;
 extern bool YkDontOptFuncABI;
 extern bool YkPatchCtrlPoint;
+extern bool YkPatchIdempotent;
 
 #endif

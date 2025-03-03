@@ -51,6 +51,7 @@
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Yk/BlockDisambiguate.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
+#include "llvm/Transforms/Yk/Idempotent.h"
 #include "llvm/Transforms/Yk/Linkage.h"
 #include "llvm/Transforms/Yk/ShadowStack.h"
 #include "llvm/Transforms/Yk/SplitBlocksAfterCalls.h"
@@ -1181,6 +1182,10 @@ bool TargetPassConfig::addISelPasses() {
 
   if (YkLinkage) {
     addPass(createYkLinkagePass());
+  }
+
+  if (YkPatchIdempotent) {
+    addPass(createYkIdempotentPass());
   }
 
   if (YkSplitBlocksAfterCalls) {
