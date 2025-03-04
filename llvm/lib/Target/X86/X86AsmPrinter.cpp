@@ -125,7 +125,7 @@ void processInstructions(
   for (const MachineInstr &Instr : MBB->instrs()) {
     // At each stackmap call, save the current mapping so it can later be
     // encoded in the stackmap when it is lowered.
-    if (Instr.getOpcode() == TargetOpcode::STACKMAP) {
+    if (Instr.getOpcode() == TargetOpcode::STACKMAP || Instr.getOpcode() == TargetOpcode::PATCHPOINT) {
       StackmapSpillMaps[&Instr] = SpillMap;
       for (const MachineOperand MO : Instr.uses()) {
         if (MO.isReg() && MO.isKill()) {
