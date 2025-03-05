@@ -1041,7 +1041,7 @@ void X86AsmPrinter::LowerPATCHPOINT(const MachineInstr &MI,
   auto &Ctx = OutStreamer->getContext();
   MCSymbol *MILabel = Ctx.createTempSymbol();
   OutStreamer->emitLabel(MILabel);
-  SM.recordPatchPoint(*MILabel, MI);
+  SM.recordPatchPoint(*MILabel, MI, StackmapSpillMaps[&MI]);
 
   PatchPointOpers opers(&MI);
   unsigned ScratchIdx = opers.getNextScratchIdx();
