@@ -136,19 +136,6 @@ void processInstructions(
       continue;
     }
 
-    // Because a patchpoint already captures the live values at the exact
-    // moment we desire, there's no need to compute a spillmap for them nor do
-    // we have to "patch them up". We can just skip them.
-    if (Instr.getOpcode() == TargetOpcode::PATCHPOINT) {
-      for (const MachineOperand MO : Instr.uses()) {
-        if (MO.isReg() && MO.isKill()) {
-          auto DwReg = getDwarfRegNum(MO.getReg(), TRI);
-          killRegister(DwReg, SpillMap);
-        }
-      }
-      continue;
-    }
-
     // Copying a value from one register B to another A, creates a mapping from
     // A to B. If A is tracked by the stackmap, then B will also be tracked and
     // assigned the same value during deoptimisation.
