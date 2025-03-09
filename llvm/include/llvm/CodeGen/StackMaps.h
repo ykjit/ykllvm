@@ -297,7 +297,7 @@ public:
                       std::map<Register, std::set<int64_t>> SpillsOffsets = {});
 
   /// Generate a stackmap record for a patchpoint instruction.
-  void recordPatchPoint(const MCSymbol &L, const MachineInstr &MI);
+  void recordPatchPoint(const MCSymbol &L, const MachineInstr &MI, std::map<Register, std::set<int64_t>> SpillOffsets = {});
 
   /// Generate a stackmap record for a statepoint instruction.
   void recordStatepoint(const MCSymbol &L, const MachineInstr &MI);

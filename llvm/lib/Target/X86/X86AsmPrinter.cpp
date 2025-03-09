@@ -125,21 +125,8 @@ void processInstructions(
   for (const MachineInstr &Instr : MBB->instrs()) {
     // At each stackmap call, save the current mapping so it can later be
     // encoded in the stackmap when it is lowered.
-    if (Instr.getOpcode() == TargetOpcode::STACKMAP) {
+    if (Instr.getOpcode() == TargetOpcode::STACKMAP || Instr.getOpcode() == TargetOpcode::PATCHPOINT) {
       StackmapSpillMaps[&Instr] = SpillMap;
-      for (const MachineOperand MO : Instr.uses()) {
-        if (MO.isReg() && MO.isKill()) {
-          auto DwReg = getDwarfRegNum(MO.getReg(), TRI);
-          killRegister(DwReg, SpillMap);
-        }
-      }
-      continue;
-    }
-
-    // Because a patchpoint already captures the live values at the exact
-    // moment we desire, there's no need to compute a spillmap for them nor do
-    // we have to "patch them up". We can just skip them.
-    if (Instr.getOpcode() == TargetOpcode::PATCHPOINT) {
       for (const MachineOperand MO : Instr.uses()) {
         if (MO.isReg() && MO.isKill()) {
           auto DwReg = getDwarfRegNum(MO.getReg(), TRI);
