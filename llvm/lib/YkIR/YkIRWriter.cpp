@@ -1008,6 +1008,10 @@ private:
     //  - the `inrange` keyword.
     //  - the vector variant.
     //  - exotic (non-zero) address spaces.
+    //  - individual dynamic indices of type larger than ssize_t. we allow
+    //    wider constant indices, because LLVM'ś collectOffset() already does
+    //    the right wrapping and truncation down to the pointer index type for
+    //    us.
     //
     // It appears that `inrange` can't appear in a GEP *instruction* (only a
     // GEP expression, inline in another instruction), but we check for it
@@ -1017,6 +1021,14 @@ private:
         (I->getPointerAddressSpace() != 0)) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
       return;
+    }
+    for (Value *Idx : I->indices()) {
+      if (!isa<Constant>(Idx) &&
+          cast<IntegerType>(Idx->getType())->getBitWidth() >
+              sizeof(ssize_t) * 8) {
+        serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
+        return;
+      }
     }
 
     // opcode:
@@ -1074,17 +1086,15 @@ private:
 
     APInt ConstOff(IdxBitWidth, 0);
     MapVector<Value *, APInt> DynOffs;
-    // Note: the width of the collected constant offset must be the same as the
-    // index type bit-width.
+    // Note: after this line, `ConstOff` is guaranteed to fit in the pointer
+    // index type: LLVM will do any required wrap/truncation for us.
     bool CollectRes = I->collectOffset(DL, IdxBitWidth, DynOffs, ConstOff);
+    assert(ConstOff.sle(APInt(sizeof(size_t) * 8, SSIZE_MAX)));
     assert(CollectRes);
 
     // const_off:
     //
     // This is always signed and we can statically sign-extend now.
-    //
-    // FIXME: We can't deal with static offsets that don't fit in a ssize_t.
-    assert(ConstOff.sle(APInt(sizeof(size_t) * 8, SSIZE_MAX)));
     OutStreamer.emitSizeT(ConstOff.getSExtValue());
     // num_dyn_offs:
     size_t NumDyn = DynOffs.size();
