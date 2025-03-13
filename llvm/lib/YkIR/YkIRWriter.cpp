@@ -54,7 +54,6 @@ public:
 
 #define YK_PROMOTE_PREFIX "__yk_promote"
 #define YK_DEBUG_STR "yk_debug_str"
-#define YK_IDEMPOTENT_PREFIX "__yk_idempotent_promote"
 
 const char *SectionName = ".yk_ir";
 const uint32_t Magic = 0xedd5f00d;
@@ -826,7 +825,8 @@ private:
       serialisePromotion(I, FLCtxt, InstIdx);
       return;
     }
-    if (I->getCalledFunction()->getName().startswith(YK_IDEMPOTENT_PREFIX)) {
+    if (I->getCalledFunction()->getName().startswith(
+            YK_IDEMPOTENT_RECORDER_PREFIX)) {
       serialiseIdempotentPromotion(I, FLCtxt, InstIdx);
       return;
     }

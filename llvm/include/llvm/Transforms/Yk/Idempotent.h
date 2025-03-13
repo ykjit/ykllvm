@@ -3,7 +3,7 @@
 
 #include "llvm/Pass.h"
 
-#define YK_IDEMPOTENT_RECORDER_FUNC "__yk_idempotent_promote_usize"
+#define YK_IDEMPOTENT_RECORDER_PREFIX "__yk_idempotent_promote_"
 #define YK_IDEMPOTENT_FNATTR "yk_idempotent"
 
 namespace llvm {

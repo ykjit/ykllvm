@@ -32,21 +32,43 @@ public:
     initializeYkIdempotentPass(*PassRegistry::getPassRegistry());
   }
 
+  // Return the name of the idempotent recorder function for an integer type.
+  std::optional<std::string> intRecorderFuncName(IntegerType *ITy) {
+    switch (ITy->getBitWidth()) {
+    case 32:
+      return std::string(YK_IDEMPOTENT_RECORDER_PREFIX "i32");
+    case 64:
+      return std::string(YK_IDEMPOTENT_RECORDER_PREFIX "i64");
+    default:
+      return std::nullopt;
+    }
+  }
+
+  // If necessary, create a declaration to the idempotent recorder function for
+  // the type `Ty`.
+  Function *getRecorderFunc(Module &M, Type *Ty) {
+    DataLayout DL(&M);
+
+    if (IntegerType *ITy = dyn_cast<IntegerType>(Ty)) {
+      std::optional<std::string> OptRecFName = intRecorderFuncName(ITy);
+      if (!OptRecFName.has_value()) {
+        return nullptr;
+      }
+      std::string RecFName = OptRecFName.value();
+      if (Function *RecF = M.getFunction(RecFName)) {
+        return RecF; // already declared.
+      } else {
+        FunctionType *RecFType = FunctionType::get(ITy, {ITy}, false);
+        return Function::Create(RecFType, GlobalVariable::ExternalLinkage,
+                                RecFName, M);
+      }
+    } else {
+      return nullptr;
+    }
+  }
+
   bool insertCalls(Module &M) {
     LLVMContext &Context = M.getContext();
-
-    // First declare the recorder function. The JIT runtime will provide
-    // the definition when the module is linked.
-    //
-    // FIXME: This only works for pointer-sized integers for now. Other types
-    // can be added later.
-    DataLayout DL(&M);
-    Type *PtrSizedIntTy = DL.getIntPtrType(Context);
-    FunctionType *RecFType =
-        FunctionType::get(PtrSizedIntTy, {PtrSizedIntTy}, false);
-    Function *RecF = Function::Create(RecFType, GlobalVariable::ExternalLinkage,
-                                      YK_IDEMPOTENT_RECORDER_FUNC, M);
-
     // Search the module for functions marked idempotent and insert a call to
     // the recorder at all returns within the function.
     IRBuilder<> Builder(Context);
@@ -62,16 +84,16 @@ public:
             if (!CF || !CF->hasFnAttribute(YK_IDEMPOTENT_FNATTR)) {
               continue;
             }
-            if (CF->getFunctionType()->getReturnType() != PtrSizedIntTy) {
-              Context.emitError(
-                  "unimplemented idempotent promote type. Only pointer-sized "
-                  "integers are supported.");
+            Function *RecF =
+                getRecorderFunc(M, CF->getFunctionType()->getReturnType());
+            if (RecF == nullptr) {
+              Context.emitError("unimplemented idempotent promote type");
               return false;
             }
-
             // Call the recorder after the call to the idempotent function.
             Builder.SetInsertPoint(CI->getNextNode());
-            CallInst *RecCall = Builder.CreateCall(RecFType, RecF, {CI});
+            CallInst *RecCall =
+                Builder.CreateCall(RecF->getFunctionType(), RecF, {CI});
             // Rewrite all future uses of the return value of the idempotent
             // function to the return value of the call to the recorder.
             CI->replaceUsesWithIf(RecCall, [RecCall](Use &U) -> bool {
