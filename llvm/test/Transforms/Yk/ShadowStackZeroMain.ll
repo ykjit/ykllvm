@@ -9,7 +9,7 @@ declare ptr @yk_location_new();
 %struct.YkLocation = type { i64 }
 
 ; The pass should insert a global variable to hold the shadow stack pointer.
-; CHECK: @shadowstack_0 = global ptr null
+; CHECK: @shadowstack_0 = thread_local global ptr null
 
 ; Check that a main fucntion requiring no shadow space doesn't needlessly
 ; fiddle with the shadow stack pointer.
