@@ -377,6 +377,7 @@ public:
         cast<GlobalVariable>(M.getOrInsertGlobal(G_SHADOW_STACK, Int8PtrTy));
     SSGlobal->setInitializer(
         ConstantPointerNull::get(cast<PointerType>(Int8PtrTy)));
+    SSGlobal->setThreadLocal(true);
 
     updateMainFunctions(DL, M, SSGlobal, Context);
 
