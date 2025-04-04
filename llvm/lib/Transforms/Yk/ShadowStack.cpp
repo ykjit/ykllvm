@@ -216,7 +216,7 @@ public:
           // whatever order we encounter them, but we may be able to waste less
           // space (to padding) by sorting them by size.
           size_t Align = AI->getAlign().value();
-          SFrameSize = ((SFrameSize + (Align - 1)) / Align) * Align;
+          SFrameSize = int((SFrameSize + (Align - 1)) / Align) * Align;
           Allocas.push_back({AI, SFrameSize});
           SFrameSize += AI->getAllocationSize(DL).value();
         } else if (ReturnInst *RI = dyn_cast<ReturnInst>(&I)) {
@@ -229,6 +229,12 @@ public:
           }
         }
       }
+    }
+    // Align this shadowstack frame to the natural stack alignment.
+    MaybeAlign MAlign = DL.getStackAlignment();
+    if (MAlign.valueOrOne().value() > 1) {
+      int Align = MAlign.valueOrOne().value();
+      SFrameSize = int((SFrameSize + (Align - 1)) / Align) * Align;
     }
     return SFrameSize;
   }
