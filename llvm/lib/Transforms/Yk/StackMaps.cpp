@@ -19,6 +19,7 @@
 #include "llvm/Transforms/Yk/ControlPoint.h"
 #include "llvm/Transforms/Yk/LivenessAnalysis.h"
 #include "llvm/Transforms/Yk/ModuleClone.h"
+#include "llvm/YkIR/YkIRWriter.h"
 #include <map>
 
 #define DEBUG_TYPE "yk-stackmaps"
@@ -58,6 +59,9 @@ public:
         continue;
       if (F.getName().startswith(YK_UNOPT_PREFIX)) // skip cloned functions
         continue;
+      if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
+        continue;
+      }
 
       LivenessAnalysis LA(&F);
       for (BasicBlock &BB : F) {
