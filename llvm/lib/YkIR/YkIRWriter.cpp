@@ -1675,6 +1675,18 @@ private:
     // flags:
     serialiseFuncFlags(F);
 
+    // idempotent functions must have been marked yk_outline.
+    //
+    // The language frontend *must* do this, but we check anyway, especially
+    // since we often directly compile ll files for testing.
+    if ((F.hasFnAttribute(YK_IDEMPOTENT_FNATTR)) &&
+        (!F.hasFnAttribute(YK_OUTLINE_FNATTR))) {
+      M.getContext().emitError(Twine("idempotent function ") + F.getName() +
+                               " must also be annotated " + YK_OUTLINE_FNATTR +
+                               "\n");
+      return;
+    }
+
     if ((!F.hasFnAttribute(YK_OUTLINE_FNATTR)) || (containsControlPoint(F))) {
       // Emit a function *definition*.
       // num_blocks:
