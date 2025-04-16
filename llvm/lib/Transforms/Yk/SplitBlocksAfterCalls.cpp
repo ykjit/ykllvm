@@ -14,7 +14,9 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
+#include "llvm/Transforms/Yk/ControlPoint.h"
 #include "llvm/Transforms/Yk/LivenessAnalysis.h"
+#include "llvm/YkIR/YkIRWriter.h"
 
 #include <map>
 
@@ -41,6 +43,12 @@ public:
     for (Function &F : M) {
       if (F.empty()) // skip declarations.
         continue;
+
+      // If we won't trace this function, no need for this transformation.
+      if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
+        continue;
+      }
+
       // As we will be modifying the blocks of this function inplace, we
       // require a work list to process all existing and newly inserted blocks
       // in order to not miss any.

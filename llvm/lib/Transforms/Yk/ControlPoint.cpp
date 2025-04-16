@@ -238,3 +238,18 @@ INITIALIZE_PASS(YkControlPoint, DEBUG_TYPE, "yk control point", false, false)
 ModulePass *llvm::createYkControlPointPass(uint64_t controlPointCount) {
   return new YkControlPoint(controlPointCount);
 }
+
+// Returns true iff the function contains a (patched) control point.
+bool llvm::containsControlPoint(llvm::Function &F) {
+  for (BasicBlock &BB : F) {
+    for (Instruction &I : BB) {
+      if (CallBase *CI = dyn_cast<CallBase>(&I)) {
+        Function *CF = CI->getCalledFunction();
+        if ((CF != nullptr) && (CF->getName() == CP_PPNAME)) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
