@@ -38,4 +38,5 @@ add_llvm_component_library(LLVMSelectionDAG
   Target
   TargetParser
   TransformUtils
+  YkPasses
   )
