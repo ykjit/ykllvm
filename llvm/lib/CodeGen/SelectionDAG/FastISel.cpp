@@ -100,6 +100,8 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Transforms/Yk/ControlPoint.h"
+#include "llvm/YkIR/YkIRWriter.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -1593,7 +1595,11 @@ bool FastISel::selectInstruction(const Instruction *I) {
 /// (fall-through) successor, and update the CFG.
 void FastISel::fastEmitBranch(MachineBasicBlock *MSucc,
                               const DebugLoc &DbgLoc) {
-  if ((!YkNoFallThrough) &&
+  Function &F = MF->getFunction();
+  // If Yk JIT is in use, we can only use a fall-through if it's a block in a
+  // function we won't ever trace.
+  if (((!YkNoFallThrough) ||
+        (F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) &&
       (FuncInfo.MBB->getBasicBlock()->sizeWithoutDebug() > 1) &&
       FuncInfo.MBB->isLayoutSuccessor(MSucc)) {
     // For more accurate line information if this is the only non-debug
