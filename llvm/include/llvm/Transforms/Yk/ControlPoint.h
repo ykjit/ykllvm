@@ -19,6 +19,7 @@
 
 namespace llvm {
 ModulePass *createYkControlPointPass(uint64_t controlPointCount);
+bool containsControlPoint(llvm::Function &F);
 } // namespace llvm
 
 #endif
