@@ -3,6 +3,7 @@ add_llvm_component_library(LLVMYkIR
 
   LINK_COMPONENTS
   Core
+  YkPasses
   MC
   Support
   )

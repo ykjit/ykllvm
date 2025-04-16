@@ -15,6 +15,8 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
+#include "llvm/Transforms/Yk/ControlPoint.h"
+#include "llvm/YkIR/YkIRWriter.h"
 
 #define DEBUG_TYPE "yk-stackmaps"
 
@@ -73,6 +75,9 @@ public:
     // the recorder at all returns within the function.
     IRBuilder<> Builder(Context);
     for (Function &F : M) {
+      if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
+        continue;
+      }
       for (BasicBlock &BB : F) {
         for (Instruction &I : BB) {
           if (CallBase *CI = dyn_cast<CallBase>(&I)) {

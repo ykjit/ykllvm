@@ -1640,6 +1640,33 @@ private:
     OutStreamer.emitInt8(Flags);
   }
 
+  // Check if the user did anything invalid in a yk_outline function.
+  void checkBadYkOutline(Function &F) {
+    for (BasicBlock &BB : F) {
+      for (Instruction &I : BB) {
+        if (CallBase *CI = dyn_cast<CallBase>(&I)) {
+          Function *CF = CI->getCalledFunction();
+          if (CF != nullptr) {
+            if (CF->getName().starts_with(YK_PROMOTE_PREFIX)) {
+              // You can't use yk_promote() in an yk_outline function, as we
+              // won't have any IR for the function and thus won't be able to
+              // "skip over" those promotions in the trace builder.
+              F.getContext().emitError(
+                  Twine("promotion detected in ") + YK_OUTLINE_FNATTR +
+                  " annotated function '" + F.getName() + "'\n");
+            }
+            if (CF->getName() == YK_DEBUG_STR) {
+              // Same for debug strings. How would the trace builder skip them?
+              F.getContext().emitError(Twine(YK_DEBUG_STR) +
+                                       "() detected in function '" +
+                                       F.getName() + "'\n");
+            }
+          }
+        }
+      }
+    }
+  }
+
   void serialiseFunc(llvm::Function &F) {
     // name:
     serialiseString(F.getName());
@@ -1647,16 +1674,37 @@ private:
     OutStreamer.emitSizeT(typeIndex(F.getFunctionType()));
     // flags:
     serialiseFuncFlags(F);
-    // num_blocks:
-    OutStreamer.emitSizeT(F.size());
-    // blocks:
-    unsigned BBIdx = 0;
-    FuncLowerCtxt FLCtxt;
-    std::vector<Argument> V;
-    for (BasicBlock &BB : F) {
-      serialiseBlock(BB, FLCtxt, BBIdx, F);
+
+    // idempotent functions must have been marked yk_outline.
+    //
+    // The language frontend *must* do this, but we check anyway, especially
+    // since we often directly compile ll files for testing.
+    if ((F.hasFnAttribute(YK_IDEMPOTENT_FNATTR)) &&
+        (!F.hasFnAttribute(YK_OUTLINE_FNATTR))) {
+      M.getContext().emitError(Twine("idempotent function ") + F.getName() +
+                               " must also be annotated " + YK_OUTLINE_FNATTR +
+                               "\n");
+      return;
     }
-    FLCtxt.patchUpInstIdxs(OutStreamer);
+
+    if ((!F.hasFnAttribute(YK_OUTLINE_FNATTR)) || (containsControlPoint(F))) {
+      // Emit a function *definition*.
+      // num_blocks:
+      OutStreamer.emitSizeT(F.size());
+      // blocks:
+      unsigned BBIdx = 0;
+      FuncLowerCtxt FLCtxt;
+      std::vector<Argument> V;
+      for (BasicBlock &BB : F) {
+        serialiseBlock(BB, FLCtxt, BBIdx, F);
+      }
+      FLCtxt.patchUpInstIdxs(OutStreamer);
+    } else {
+      checkBadYkOutline(F);
+      // Emit a function *declaration*.
+      // num_blocks:
+      OutStreamer.emitSizeT(0);
+    }
   }
 
   void serialiseFunctionType(FunctionType *Ty) {
