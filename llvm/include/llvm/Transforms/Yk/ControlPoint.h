@@ -17,6 +17,9 @@
 // The name of the patchpoint intrinsic we use for the control point.
 #define CP_PPNAME "llvm.experimental.patchpoint.void"
 
+// The operand index of a patchpoint's target operand.
+#define PP_TARGET_OPND_IDX 2
+
 namespace llvm {
 ModulePass *createYkControlPointPass(uint64_t controlPointCount);
 bool containsControlPoint(llvm::Function &F);

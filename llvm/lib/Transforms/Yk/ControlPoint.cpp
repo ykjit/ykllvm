@@ -248,7 +248,12 @@ bool llvm::containsControlPoint(llvm::Function &F) {
         Function *CF = CI->getCalledFunction();
         // Is it the patched control point?
         if ((CF != nullptr) && (CF->getName() == CP_PPNAME)) {
-          return true;
+          Value *PPTgt = CI->getArgOperand(PP_TARGET_OPND_IDX);
+          if (Function *Tgt = dyn_cast<Function>(PPTgt)) {
+            if (Tgt->getName() == YK_NEW_CONTROL_POINT) {
+              return true;
+            }
+          }
         }
         // Is it the unpatched control point?
         if ((CF != nullptr) && (CF->getName() == YK_DUMMY_CONTROL_POINT)) {
