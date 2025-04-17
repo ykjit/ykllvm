@@ -45,6 +45,8 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/Yk/ControlPoint.h"
+#include "llvm/YkIR/YkIRWriter.h"
 
 #include <map>
 #include <cstdint>
@@ -353,7 +355,12 @@ bool X86AsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   TII = MF.getSubtarget().getInstrInfo();
   std::map<Register, std::set<int64_t>> SpillMap;
   std::map<const MachineBasicBlock *, std::map<Register, std::set<int64_t>>> MBSpillMaps;
-  if (YkStackMapAdditionalLocs) {
+
+  // If we are using Yk JIT and it's something that we could trace, compute the
+  // additional locations for stackmaps.
+  Function &F = MF.getFunction();
+  if (YkStackMapAdditionalLocs &&
+      (!F.hasFnAttribute(YK_OUTLINE_FNATTR) || containsControlPoint(F))) {
     findSpillLocations(&*MF.begin(), MBSpillMaps, SpillMap, StackmapSpillMaps);
   }
 
