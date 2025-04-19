@@ -36,19 +36,30 @@ struct YkBasicBlockTracer : public ModulePass {
 
     FunctionType *FType = FunctionType::get(
         ReturnType, {FunctionIndexArgType, BlockIndexArgType}, false);
+
     Function *TraceFunc = Function::Create(
         FType, GlobalVariable::ExternalLinkage, YK_TRACE_FUNCTION, M);
+
+    Function *DummyTraceFunc = Function::Create(
+        FType, GlobalVariable::ExternalLinkage, YK_TRACE_FUNCTION_DUMMY, M);
 
     IRBuilder<> builder(Context);
     uint32_t FunctionIndex = 0;
     for (auto &F : M) {
       uint32_t BlockIndex = 0;
-      // FIXME: Once control point transition is implemented,
-      //        only add tracing calls to unopt version.
       for (auto &BB : F) {
         builder.SetInsertPoint(&*BB.getFirstInsertionPt());
-        builder.CreateCall(TraceFunc, {builder.getInt32(FunctionIndex),
-                                       builder.getInt32(BlockIndex)});
+
+        if (F.getName().startswith(YK_UNOPT_PREFIX)) {
+          // Add dummy tracing calls to unoptimised functions
+          // TODO: These calls are redundantm we can simplery remove them
+          builder.CreateCall(TraceFunc, {builder.getInt32(FunctionIndex),
+                                         builder.getInt32(BlockIndex)});
+        } else {
+          // Add tracing calls to unoptimised functions
+          builder.CreateCall(DummyTraceFunc, {builder.getInt32(FunctionIndex),
+                                              builder.getInt32(BlockIndex)});
+        }
         assert(BlockIndex != UINT32_MAX &&
                "Expected BlockIndex to not overflow");
         BlockIndex++;
@@ -59,6 +70,10 @@ struct YkBasicBlockTracer : public ModulePass {
     }
     return true;
   }
+   void getAnalysisUsage(AnalysisUsage &AU) const override {
+      // AU.setPreservesCFG();
+      AU.setPreservesAll(); //if appropriate
+    }
 };
 } // namespace
 
