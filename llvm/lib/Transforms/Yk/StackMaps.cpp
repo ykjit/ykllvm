@@ -19,6 +19,7 @@
 #include "llvm/Transforms/Yk/ControlPoint.h"
 #include "llvm/Transforms/Yk/LivenessAnalysis.h"
 #include "llvm/Transforms/Yk/ModuleClone.h"
+#include "llvm/YkIR/YkIRWriter.h"
 #include <map>
 
 #define DEBUG_TYPE "yk-stackmaps"
