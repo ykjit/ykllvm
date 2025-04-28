@@ -277,7 +277,7 @@ static cl::opt<bool> YkLinkage("yk-linkage", cl::init(false),
                                       cl::desc("Change functions with internal linkage to have external linkage"));
 
 static cl::opt<bool>
-    YkShadowStack("yk-shadow-stack", cl::init(false), cl::NotHidden,
+    YkShadowStackOpt("yk-shadow-stack", cl::init(false), cl::NotHidden,
                   cl::desc("Use a shadow stack for stack values."));
 
 static cl::opt<bool>
@@ -1162,7 +1162,7 @@ bool TargetPassConfig::addISelPasses() {
     addPass(createYkNoCallsInEntryBlocksPass());
   }
 
-  if (YkShadowStack) {
+  if (YkShadowStackOpt) {
     addPass(createYkShadowStackPass(numberOfControlPoints));
   }
   // We insert the yk control point pass as late as possible. It has to run
