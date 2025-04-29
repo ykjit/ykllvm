@@ -83,7 +83,9 @@
 
 #include "llvm/Transforms/Yk/ShadowStack.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -120,6 +122,7 @@ class YkShadowStackImpl {
   Type *Int8PtrTy = nullptr;
   Type *Int32Ty = nullptr;
   Type *PointerSizedIntTy = nullptr;
+  std::unique_ptr<DIBuilder> DIB;
   using AllocaVector = std::vector<std::pair<AllocaInst *, size_t>>;
 
 private:
@@ -145,6 +148,35 @@ public:
       }
     }
     return false;
+  }
+
+  // Insert a shadowstack_ptr debug variable when compiled with '-g' so that in
+  // gdb we can know the offset into the shadow stack for each frame. This uses
+  // llvm's debug intrinsic so does not affect optimized code.
+  void insertShadowDbgInfo(Function &F, DataLayout &DL, size_t AllocSize) {
+    DISubprogram *SP = F.getSubprogram();
+    if (!SP) {
+      return;
+    }
+    DIBasicType *DISSTy = DIB->createBasicType("shadowstack", AllocSize * 8,
+                                               dwarf::DW_ATE_address);
+    DIDerivedType *DISSPtrTy = DIB->createPointerType(
+        DISSTy, DL.getPointerSize(), DL.getPointerABIAlignment(0).value(),
+        std::nullopt, "shadowstack_ptr");
+
+    // Create a debug local
+    DILocalVariable *DebugVar = DIB->createAutoVariable(
+        SP, "shadow_stack", SP->getFile(), SP->getLine(), DISSPtrTy,
+        false, // AlwaysPreserve
+        DINode::DIFlags::FlagArtificial);
+
+    // And insert it at the beginning of the function
+    DILocation *DIL = DILocation::get(F.getContext(), SP->getLine(), 0, SP);
+    Instruction *InsertBefore = &*F.getEntryBlock().getFirstInsertionPt();
+    DIB->insertDbgValueIntrinsic(ConstantPointerNull::get(PointerType::get(
+                                     F.getContext(), 0)), // Null pointer value
+                                 DebugVar, DIB->createExpression(), DIL,
+                                 InsertBefore);
   }
 
   // Insert main's prologue.
@@ -242,8 +274,8 @@ public:
   //
   // Returns the shadow stack pointer before more space is allocated. Local
   // variables for the shadow frame will be pointers relative to this.
-  Value *insertShadowPrologue(Function &F, GlobalValue *SSGlobal,
-                              size_t AllocSize) {
+  Value *insertShadowPrologue(Function &F, DataLayout &DL,
+                              GlobalValue *SSGlobal, size_t AllocSize) {
     Instruction *First = F.getEntryBlock().getFirstNonPHI();
     IRBuilder<> Builder(First);
 
@@ -254,6 +286,8 @@ public:
         Int8Ty, InitSSPtr, {ConstantInt::get(Int32Ty, AllocSize)}, "", First);
     // Update the global variable keeping track of the top of shadow stack.
     Builder.CreateStore(GEP, SSGlobal);
+
+    insertShadowDbgInfo(F, DL, AllocSize);
 
     return InitSSPtr;
   }
@@ -364,6 +398,15 @@ public:
 
   bool run(Module &M) {
     LLVMContext &Context = M.getContext();
+    llvm::NamedMDNode *CU_Nodes = M.getNamedMetadata("llvm.dbg.cu");
+    if (!CU_Nodes || CU_Nodes->getNumOperands() == 0) {
+      // No DICompileUnit found: you may need to create one.
+      // Or, handle this as an error depending on your use case.
+    }
+    llvm::DICompileUnit *CU =
+        llvm::cast<llvm::DICompileUnit>(CU_Nodes->getOperand(0));
+
+    DIB = std::make_unique<DIBuilder>(M, false, CU);
 
     // Cache commonly used types.
     Int8Ty = Type::getInt8Ty(Context);
@@ -404,11 +447,14 @@ public:
       std::vector<ReturnInst *> Rets;
       size_t SFrameSize = analyseFunction(F, DL, Allocas, Rets);
       if (SFrameSize > 0) {
-        Value *InitSSPtr = insertShadowPrologue(F, SSGlobal, SFrameSize);
+        Value *InitSSPtr = insertShadowPrologue(F, DL, SSGlobal, SFrameSize);
         rewriteAllocas(DL, Allocas, InitSSPtr);
         insertShadowEpilogues(Rets, SSGlobal, InitSSPtr);
       }
     }
+
+    // Finalize the DIBuilder after all debug info is created
+    DIB->finalize();
 
 #ifndef NDEBUG
     // Our pass runs after LLVM normally does its verify pass. In debug builds
