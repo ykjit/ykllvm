@@ -113,7 +113,8 @@ void initializeYkShadowStackPass(PassRegistry &);
 } // namespace llvm
 
 namespace {
-class YkShadowStack : public ModulePass {
+
+class YkShadowStackImpl {
   // Commonly used types.
   Type *Int8Ty = nullptr;
   Type *Int8PtrTy = nullptr;
@@ -125,12 +126,8 @@ private:
   uint64_t controlPointCount;
 
 public:
-  static char ID;
-
-  YkShadowStack(uint64_t controlPointCount)
-      : ModulePass(ID), controlPointCount(controlPointCount) {
-    initializeYkShadowStackPass(*PassRegistry::getPassRegistry());
-  }
+  YkShadowStackImpl(uint64_t controlPointCount)
+      : controlPointCount(controlPointCount) {}
 
   // Checks whether the given instruction allocates space for the result of a
   // call to `yk_mt_new`.
@@ -330,8 +327,7 @@ public:
 
       AllocaVector UnoptMainAllocas;
       std::vector<ReturnInst *> UnoptMainRets;
-      size_t SFrameSizeUnopt =
-          analyseFunction(*UnoptMain, DL, UnoptMainAllocas, UnoptMainRets);
+      analyseFunction(*UnoptMain, DL, UnoptMainAllocas, UnoptMainRets);
 
       // Insert a load of SSGlobal at the beginning of UnoptMain.
       BasicBlock &EntryBB = UnoptMain->getEntryBlock();
@@ -366,7 +362,7 @@ public:
     }
   }
 
-  bool runOnModule(Module &M) override {
+  bool run(Module &M) {
     LLVMContext &Context = M.getContext();
 
     // Cache commonly used types.
@@ -430,6 +426,25 @@ public:
 char YkShadowStack::ID = 0;
 INITIALIZE_PASS(YkShadowStack, DEBUG_TYPE, "yk shadowstack", false, false)
 
+YkShadowStack::YkShadowStack(uint64_t controlPointCount)
+    : ModulePass(ID), controlPointCount(controlPointCount) {
+  initializeYkShadowStackPass(*PassRegistry::getPassRegistry());
+}
+
+bool YkShadowStack::runOnModule(Module &M) {
+  return YkShadowStackImpl(controlPointCount).run(M);
+}
+
 ModulePass *llvm::createYkShadowStackPass(uint64_t controlPointCount) {
   return new YkShadowStack(controlPointCount);
+}
+
+YkShadowStackNew::YkShadowStackNew() : controlPointCount(1) {}
+
+YkShadowStackNew::YkShadowStackNew(uint64_t controlPointCount)
+    : controlPointCount(controlPointCount) {}
+
+PreservedAnalyses YkShadowStackNew::run(Module &M, ModuleAnalysisManager &) {
+  bool Changed = YkShadowStackImpl(controlPointCount).run(M);
+  return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
 }
