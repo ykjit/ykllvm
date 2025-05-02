@@ -59,6 +59,9 @@ public:
         continue;
       if (F.getName().startswith(YK_UNOPT_PREFIX)) // skip cloned functions
         continue;
+      if (F.hasFnAttribute("yk_outline") && !(containsControlPoint(F))) {
+        continue;
+      }
 
       LivenessAnalysis LA(&F);
       for (BasicBlock &BB : F) {
