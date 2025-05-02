@@ -190,6 +190,20 @@ public:
     for (BasicBlock &BB : F) {
       for (Instruction &I : BB) {
         if (AllocaInst *AI = dyn_cast<AllocaInst>(&I)) {
+          if (!AI->getAllocationSize(DL).has_value()) {
+            // This function contains a dynamically sized alloca. We thus can't
+            // create a shadow stack for it because we can't compute the
+            // stack-frame size statically. Instead, we outline this, preventing
+            // it from being traced at all, which is a bit of a hack.
+            //
+            // This might happen with certain allocas: variable length arrays;
+            // non-const array sizes; and opaque types.
+            //
+            // YKFIXME: This could be supported if we use a bump pointer instead
+            // of calculating the high water mark in the prologue.
+            F.addFnAttr(YK_OUTLINE_FNATTR);
+            return 0;
+          }
           // Some yk specific variables that will never be traced and thus
           // can live happily on the normal stack.
           if (StructType *ST = dyn_cast<StructType>(AI->getAllocatedType())) {
