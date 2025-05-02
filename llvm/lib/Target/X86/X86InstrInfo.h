@@ -329,6 +329,12 @@ public:
                      SmallVectorImpl<MachineOperand> &Cond,
                      bool AllowModify) const override;
 
+  bool analyzeBranchExtended(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
+                             MachineBasicBlock *&FBB,
+                             SmallVectorImpl<MachineOperand> &Cond,
+                             uint8_t &NumCondBrs,
+                             bool AllowModify = false) const override;
+
   int getJumpTableIndex(const MachineInstr &MI) const override;
 
   std::optional<ExtAddrMode>

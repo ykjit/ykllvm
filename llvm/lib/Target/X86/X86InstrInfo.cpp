@@ -3232,6 +3232,49 @@ bool X86InstrInfo::AnalyzeBranchImpl(
   return false;
 }
 
+bool X86InstrInfo::analyzeBranchExtended(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
+                             MachineBasicBlock *&FBB,
+                             SmallVectorImpl<MachineOperand> &Cond,
+                             uint8_t &NumCondBrs,
+                             bool AllowModify) const {
+  bool Ret = analyzeBranch(MBB, TBB, FBB, Cond, AllowModify);
+  if (Cond.size() == 0) {
+    NumCondBrs = 0;
+  } else if (Cond.size() == 1) {
+    switch ((X86::CondCode)Cond[0].getImm()) {
+      case X86::COND_O:
+      case X86::COND_NO:
+      case X86::COND_B:
+      case X86::COND_AE:
+      case X86::COND_E:
+      case X86::COND_NE:
+      case X86::COND_BE:
+      case X86::COND_A:
+      case X86::COND_S:
+      case X86::COND_NS:
+      case X86::COND_P:
+      case X86::COND_NP:
+      case X86::COND_L:
+      case X86::COND_GE:
+      case X86::COND_LE:
+      case X86::COND_G:
+        NumCondBrs = 1;
+        break;
+      case X86::COND_NE_OR_P:
+      case X86::COND_E_AND_NP:
+        NumCondBrs = 2;
+        break;
+      default:
+        report_fatal_error("Unhandled condition");
+        break;
+    }
+  } else {
+    report_fatal_error("Unimplemented");
+  }
+  return Ret;
+}
+
+
 bool X86InstrInfo::analyzeBranch(MachineBasicBlock &MBB,
                                  MachineBasicBlock *&TBB,
                                  MachineBasicBlock *&FBB,
