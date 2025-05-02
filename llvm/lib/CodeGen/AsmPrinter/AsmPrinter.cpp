@@ -1554,15 +1554,17 @@ void AsmPrinter::emitBBAddrMapSection(const MachineFunction &MF) {
       // successors:
       //
       // `Unconditional`: [target-address: u64]
-      // `Conditional`:   [taken-address: u64, not-taken-address: u64]
+      // `Conditional`:   [num_condbrs: u8, taken-address: u64, not-taken-address: u64]
       // `Return`:        []
       // `Dynamic`:       []
 
       MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
       SmallVector<MachineOperand> Conds;
+      uint8_t NumCondBrs = 0;
 
-      if (!TI->analyzeBranch(const_cast<MachineBasicBlock &>(MBB), TBB, FBB,
-                             Conds)) {
+      if (!TI->analyzeBranchExtended(const_cast<MachineBasicBlock &>(MBB),
+            TBB, FBB, Conds, NumCondBrs))
+      {
         // The block ends with a branch or a fall-thru.
         if (!TBB && !FBB) {
           // Both null: block has no terminator and either falls through or
@@ -1588,6 +1590,7 @@ void AsmPrinter::emitBBAddrMapSection(const MachineFunction &MF) {
             // divergence.
             MachineBasicBlock *ThruBB = findFallthruBlock(&MBB);
             OutStreamer->emitInt8(Conditional);
+            OutStreamer->emitInt8(NumCondBrs);
             OutStreamer->emitSymbolValue(BBSym(TBB, FunctionSymbol),
                                          getPointerSize());
             if (ThruBB) {
@@ -1601,6 +1604,7 @@ void AsmPrinter::emitBBAddrMapSection(const MachineFunction &MF) {
           // Conditional branch followed by an unconditional branch.
           assert(TBB && FBB);
           OutStreamer->emitInt8(Conditional);
+          OutStreamer->emitInt8(NumCondBrs);
           OutStreamer->emitSymbolValue(BBSym(TBB, FunctionSymbol),
                                        getPointerSize());
           OutStreamer->emitSymbolValue(BBSym(FBB, FunctionSymbol),
