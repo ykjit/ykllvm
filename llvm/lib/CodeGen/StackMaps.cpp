@@ -592,12 +592,42 @@ void StackMaps::recordStackMapOpers(const MCSymbol &MILabel,
 
   const TargetRegisterInfo *TRI = AP.MF->getSubtarget().getRegisterInfo();
   std::set<int64_t> TrackedRegisters;
-  for (const auto *Op = MI.operands_begin(); Op != MI.operands_end(); Op++) {
-    if (Op->isReg() && !Op->isImplicit() && !Op->isUndef()) {
-      TrackedRegisters.insert(getDwarfRegNum(Op->getReg(), TRI));
+  if (MI.getOpcode() == TargetOpcode::PATCHPOINT) {
+    // Example PATCHPOINT structure:
+    //  PATCHPOINT 0, 13, @__ykrt_control_point, 3, 0, $rdi, $rsi, $rdx, 0,
+    //  $rbp, -48, ...
+    // PATCHPOINT operands (by index):
+    // [0]  Patchpoint ID (e.g., 0)
+    // [1]  Patchpoint size (e.g., 13)
+    // [2]  Function name to call (e.g., @__ykrt_control_point)
+    // [3]  Number of arguments (e.g., 3)
+    // [4]  First argument register (e.g., $rdi)
+    // [5]  Second argument register (e.g., $rsi)
+    // [6]  Third argument register (e.g., $rdx)
+    // [7]  Zero or padding
+    // [8]  Frame pointer register (e.g., $rbp)
+    // [9]  Stack offset (relative to frame pointer, e.g., -48)
+    // ...
+    auto firstArgIdx = 4;
+    auto numArgs = MI.getOperand(3).getImm();
+    auto paddingOperandCount = 2;
+    auto argLength = numArgs + firstArgIdx + paddingOperandCount;
+    for (const auto *Op = MI.operands_begin(); Op != MI.operands_end(); Op++) {
+      if (argLength >= 0) {
+        argLength--;
+        continue;
+      }
+      if (Op->isReg() && !Op->isImplicit() && !Op->isUndef()) {
+        TrackedRegisters.insert(getDwarfRegNum(Op->getReg(), TRI));
+      }
+    }
+  } else {
+    for (const auto *Op = MI.operands_begin(); Op != MI.operands_end(); Op++) {
+      if (Op->isReg() && !Op->isImplicit() && !Op->isUndef()) {
+        TrackedRegisters.insert(getDwarfRegNum(Op->getReg(), TRI));
+      }
     }
   }
-
   // Parse operands.
   if (MI.getOpcode() == TargetOpcode::STATEPOINT)
     parseStatepointOpers(MI, MOI, MOE, LiveVars, LiveOuts);
