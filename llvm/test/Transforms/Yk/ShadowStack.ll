@@ -12,6 +12,8 @@ declare ptr @yk_location_new();
 
 ; The pass should insert a global variable to hold the shadow stack pointer.
 ; CHECK: @shadowstack_0 = thread_local global ptr null
+; CHECK: @shadowstack_begin = external thread_local global ptr
+; CHECK: @shadowstack_end = external thread_local global ptr
 
 ; Check a non-main function that requires some shadow space.
 ;
@@ -82,15 +84,18 @@ entry:
 ; CHECK-NEXT:  entry:
 ; CHECK-NEXT:    %0 = call ptr @malloc(i64 1000000)
 ; CHECK-NEXT:    %1 = getelementptr i8, ptr %0, i32 32
+; CHECK-NEXT:    %2 = getelementptr i8, ptr %0, i32 1000000
+; CHECK-NEXT:    store ptr %0, ptr @shadowstack_begin, align 8
+; CHECK-NEXT:    store ptr %2, ptr @shadowstack_end, align 8
 ; CHECK-NEXT:    store ptr %1, ptr @shadowstack_0, align 8
-; CHECK-NEXT:    %2 = getelementptr i8, ptr %0, i32 0
-; CHECK-NEXT:    %3 = getelementptr i8, ptr %0, i32 4
-; CHECK-NEXT:    %4 = getelementptr i8, ptr %0, i32 8
-; CHECK-NEXT:    %5 = getelementptr i8, ptr %0, i32 16
-; CHECK-NEXT:    %6 = getelementptr i8, ptr %0, i32 28
+; CHECK-NEXT:    %3 = getelementptr i8, ptr %0, i32 0
+; CHECK-NEXT:    %4 = getelementptr i8, ptr %0, i32 4
+; CHECK-NEXT:    %5 = getelementptr i8, ptr %0, i32 8
+; CHECK-NEXT:    %6 = getelementptr i8, ptr %0, i32 16
+; CHECK-NEXT:    %7 = getelementptr i8, ptr %0, i32 28
 ; CHECK-NEXT:    %mt_stack = alloca ptr, align 8
 ; CHECK-NEXT:    %loc_stack = alloca %struct.YkLocation, align 8
-; CHECK:         %lrv = load i32, ptr %2, align 4
+; CHECK:         %lrv = load i32, ptr %3, align 4
 ; --- remember, main() has no shadow epilogue! ---
 ; CHECK-NEXT:    ret i32 %lrv
 ; CHECK-NEXT:  }

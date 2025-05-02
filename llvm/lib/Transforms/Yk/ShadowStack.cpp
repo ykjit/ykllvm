@@ -103,6 +103,8 @@
 #define DEBUG_TYPE "yk-shadow-stack-pass"
 #define YK_MT_NEW "yk_mt_new"
 #define G_SHADOW_STACK "shadowstack_0"
+#define G_SHADOW_BEGIN "shadowstack_begin"
+#define G_SHADOW_END "shadowstack_end"
 #define MAIN "main"
 // The size of the shadow stack. Defaults to 1MB.
 // YKFIXME: Make this adjustable by a compiler flag.
@@ -123,6 +125,16 @@ class YkShadowStackImpl {
   Type *Int32Ty = nullptr;
   Type *PointerSizedIntTy = nullptr;
   std::unique_ptr<DIBuilder> DIB;
+
+  // Shadow stack bounds. These are necessary for VM support where we need to
+  // inform their GC of pointers which live on the shadow stack.
+  GlobalVariable *ShadowBegin;
+  // YKFIXME: We should remove this eventually. It records the buffer end
+  // pointer and *not* the end of the currently allocated shadow stack
+  // (shadowstack_0). However, right now it is useful for debugging GC issues
+  // when porting VMs to yk.
+  GlobalVariable *ShadowEnd;
+
   using AllocaVector = std::vector<std::pair<AllocaInst *, size_t>>;
 
 private:
@@ -202,6 +214,12 @@ public:
         M->getOrInsertFunction("malloc", Int8PtrTy, PointerSizedIntTy);
     CallInst *Malloc = Builder.CreateCall(
         MF, {ConstantInt::get(PointerSizedIntTy, SHADOW_STACK_SIZE)}, "");
+
+    GetElementPtrInst *SSEnd = GetElementPtrInst::Create(
+        Int8Ty, Malloc, {ConstantInt::get(Int32Ty, SHADOW_STACK_SIZE)}, "",
+        Malloc->getNextNode());
+    Builder.CreateStore(Malloc, ShadowBegin);
+    Builder.CreateStore(SSEnd, ShadowEnd);
 
     // If main() needs shadow space, reserve some.
     if (SFrameSize > 0) {
@@ -430,16 +448,18 @@ public:
     DataLayout DL(&M);
     PointerSizedIntTy = DL.getIntPtrType(Context);
 
-    // Create a global variable which will store the pointer to the heap memory
-    // used by the shadow stack.
-    //
-    // YKFIXME: This isn't thread safe. For now interpreters are assumed to be
-    // single threaded: https://github.com/ykjit/yk/issues/794
     GlobalVariable *SSGlobal =
         cast<GlobalVariable>(M.getOrInsertGlobal(G_SHADOW_STACK, Int8PtrTy));
     SSGlobal->setInitializer(
         ConstantPointerNull::get(cast<PointerType>(Int8PtrTy)));
+    ShadowBegin =
+        cast<GlobalVariable>(M.getOrInsertGlobal(G_SHADOW_BEGIN, Int8PtrTy));
+    ShadowEnd =
+        cast<GlobalVariable>(M.getOrInsertGlobal(G_SHADOW_END, Int8PtrTy));
+
     SSGlobal->setThreadLocal(true);
+    ShadowBegin->setThreadLocal(true);
+    ShadowEnd->setThreadLocal(true);
 
     updateMainFunctions(DL, M, SSGlobal, Context);
 

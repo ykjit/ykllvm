@@ -10,6 +10,8 @@ declare ptr @yk_location_new();
 
 ; The pass should insert a global variable to hold the shadow stack pointer.
 ; CHECK: @shadowstack_0 = thread_local global ptr null
+; CHECK: @shadowstack_begin = external thread_local global ptr
+; CHECK: @shadowstack_end = external thread_local global ptr
 
 ; Check that a main fucntion requiring no shadow space doesn't needlessly
 ; fiddle with the shadow stack pointer.
@@ -19,6 +21,10 @@ declare ptr @yk_location_new();
 ; CHECK:       define dso_local i32 @main(i32 noundef %argc, ptr noundef %argv) #0 {
 ; CHECK-NEXT:  entry:
 ; CHECK-NEXT:    %0 = call ptr @malloc(i64 1000000)
+; CHECK-NEXT:  %1 = getelementptr i8, ptr %0, i32 1000000
+; CHECK-NEXT:  store ptr %0, ptr @shadowstack_begin, align 8
+; CHECK-NEXT:  store ptr %1, ptr @shadowstack_end, align 8
+
 ; CHECK-NEXT:    store ptr %0, ptr @shadowstack_0, align 8
 ; CHECK-NEXT:    ret i32 0
 ; CHECK-NEXT:  }
