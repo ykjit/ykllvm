@@ -83,9 +83,7 @@
 
 #include "llvm/Transforms/Yk/ShadowStack.h"
 #include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/DIBuilder.h"
 #include "llvm/IR/DataLayout.h"
-#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -122,7 +120,6 @@ class YkShadowStackImpl {
   Type *Int8PtrTy = nullptr;
   Type *Int32Ty = nullptr;
   Type *PointerSizedIntTy = nullptr;
-  std::unique_ptr<DIBuilder> DIB;
   using AllocaVector = std::vector<std::pair<AllocaInst *, size_t>>;
 
 private:
@@ -148,40 +145,6 @@ public:
       }
     }
     return false;
-  }
-
-  // Insert a shadowstack_ptr debug variable when compiled with '-g' so that in
-  // gdb we can know the offset into the shadow stack for each frame. This uses
-  // llvm's debug intrinsic so does not affect optimized code.
-  void insertShadowDbgInfo(Function &F, DataLayout &DL, GlobalValue *SSGlobal,
-                           size_t SFrameSize) {
-    DISubprogram *SP = F.getSubprogram();
-    if (!SP) {
-      return;
-    }
-    DIBasicType *DISSTy = DIB->createBasicType("shadowstack", SFrameSize * 8,
-                                               dwarf::DW_ATE_address);
-    DIDerivedType *DISSPtrTy = DIB->createPointerType(
-        DISSTy, DL.getPointerSize(), DL.getPointerABIAlignment(0).value(),
-        std::nullopt, "shadowstack_ptr");
-
-    // Create a debug local var to our opaque shadow stack block
-    DILocalVariable *DebugVar = DIB->createAutoVariable(
-        SP, "shadowstack", SP->getFile(), SP->getLine(), DISSPtrTy,
-        false, // AlwaysPreserve
-        DINode::DIFlags::FlagArtificial);
-
-    // And insert it at the beginning of the function
-    DILocation *DIL = DILocation::get(F.getContext(), SP->getLine(), 0, SP);
-    Instruction *InsertBefore = &*F.getEntryBlock().getFirstInsertionPt();
-    Instruction *First = F.getEntryBlock().getFirstNonPHI();
-    IRBuilder<> Builder(First);
-
-    // Load the shadow stack pointer out of the global variable and assign it
-    // to our debug local.
-    Value *SSPtr = Builder.CreateLoad(Int8PtrTy, SSGlobal);
-    DIB->insertDbgValueIntrinsic(SSPtr, DebugVar, DIB->createExpression(), DIL,
-                                 InsertBefore);
   }
 
   // Insert main's prologue.
@@ -415,13 +378,6 @@ public:
 
   bool run(Module &M) {
     LLVMContext &Context = M.getContext();
-    llvm::NamedMDNode *CU_Nodes = M.getNamedMetadata("llvm.dbg.cu");
-    if (CU_Nodes && CU_Nodes->getNumOperands() > 0) {
-      llvm::DICompileUnit *CU =
-          llvm::cast<llvm::DICompileUnit>(CU_Nodes->getOperand(0));
-
-      DIB = std::make_unique<DIBuilder>(M, false, CU);
-    }
 
     // Cache commonly used types.
     Int8Ty = Type::getInt8Ty(Context);
@@ -463,15 +419,10 @@ public:
       size_t SFrameSize = analyseFunction(F, DL, Allocas, Rets);
       if (SFrameSize > 0) {
         Value *InitSSPtr = insertShadowPrologue(F, SSGlobal, SFrameSize);
-        insertShadowDbgInfo(F, DL, SSGlobal, SFrameSize);
         rewriteAllocas(DL, Allocas, InitSSPtr);
         insertShadowEpilogues(Rets, SSGlobal, InitSSPtr);
       }
     }
-
-    // Finalize the DIBuilder after all debug info is created
-    if (DIB)
-      DIB->finalize();
 
 #ifndef NDEBUG
     // Our pass runs after LLVM normally does its verify pass. In debug builds
