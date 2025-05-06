@@ -605,17 +605,12 @@ void StackMaps::recordStackMapOpers(
     // [8]  Frame pointer register (e.g., $rbp)
     // [9]  Stack offset (relative to frame pointer, e.g., -48)
     // ...
-    auto firstArgIdx = 4;
-    auto numArgs = MI.getOperand(3).getImm();
-    auto paddingOperandCount = 2;
-    auto argLength = numArgs + firstArgIdx + paddingOperandCount;
-    for (const auto *Op = MI.operands_begin(); Op != MI.operands_end(); Op++) {
-      if (argLength >= 0) {
-        argLength--;
-        continue;
-      }
-      if (Op->isReg() && !Op->isImplicit() && !Op->isUndef()) {
-        TrackedRegisters.insert(getDwarfRegNum(Op->getReg(), TRI));
+    PatchPointOpers Opers(&MI);
+    unsigned SkipOperands = Opers.getStackMapStartIdx();
+    for (unsigned i = SkipOperands, e = MI.getNumOperands(); i < e; ++i) {
+      const MachineOperand &Op = MI.getOperand(i);
+      if (Op.isReg() && !Op.isImplicit() && !Op.isUndef()) {
+        TrackedRegisters.insert(getDwarfRegNum(Op.getReg(), TRI));
       }
     }
   } else {
