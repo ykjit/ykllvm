@@ -11,7 +11,9 @@ declare ptr @yk_location_new();
 %struct.YkLocation = type { i64 }
 
 ; The pass should insert a global variable to hold the shadow stack pointer.
+; CHECK: @shadowstack_size = global i32 1000000, section ".rodata"
 ; CHECK: @shadowstack_0 = thread_local global ptr null
+; CHECK: @shadowstack_head = thread_local global ptr null
 
 ; Check a non-main function that requires some shadow space.
 ;
@@ -82,6 +84,7 @@ entry:
 ; CHECK-NEXT:  entry:
 ; CHECK-NEXT:    %0 = call ptr @malloc(i64 1000000)
 ; CHECK-NEXT:    %1 = getelementptr i8, ptr %0, i32 32
+; CHECK-NEXT:    store ptr %0, ptr @shadowstack_head, align 8
 ; CHECK-NEXT:    store ptr %1, ptr @shadowstack_0, align 8
 ; CHECK-NEXT:    %2 = getelementptr i8, ptr %0, i32 0
 ; CHECK-NEXT:    %3 = getelementptr i8, ptr %0, i32 4
