@@ -589,22 +589,36 @@ void StackMaps::recordStackMapOpers(
 
   const TargetRegisterInfo *TRI = AP.MF->getSubtarget().getRegisterInfo();
   std::set<int64_t> TrackedRegisters;
+
+  // Patchpoints and stackmaps have different instruction formats.
+  // Patchpoints embed function call arguments directly into the
+  // instruction, while stackmaps are simpler and only contain the
+  // stackmap data - therefore we need to treat them differently.
+  //
+  // Example PATCHPOINT structure:
+  //   PATCHPOINT 0, 13, @__ykrt_control_point, 3, $rdi, $rsi, $rdx, 0,
+  //   $rbp, -48, ...
+  // PATCHPOINT operands (by index):
+  // [0]  Patchpoint ID (e.g., 0)
+  // [1]  Patchpoint size (e.g., 13)
+  // [2]  Function name to call (e.g., @__ykrt_control_point)
+  // [3]  Number of arguments (e.g., 3)
+  // [4]  First argument register (e.g., $rdi)
+  // [5]  Second argument register (e.g., $rsi)
+  // [6]  Third argument register (e.g., $rdx)
+  // [7]  Zero or padding
+  // [8+] Operands
+  // ...
+  //
+  // Example STACKMAP structure:
+  //   STACKMAP 3, 0, 0, $rbp, -48, 3, $r14, 3, $r13, 3, 1, 8, ...
+  // STACKMAP operands (by index):
+  // [0]  Stackmap ID (e.g., 3)
+  // [1]  Reserved/flags (e.g., 0)
+  // [2]  Reserved/padding (e.g., 0)
+  // [3+] Operands
+  // ...
   if (MI.getOpcode() == TargetOpcode::PATCHPOINT) {
-    // Example PATCHPOINT structure:
-    //  PATCHPOINT 0, 13, @__ykrt_control_point, 3, 0, $rdi, $rsi, $rdx, 0,
-    //  $rbp, -48, ...
-    // PATCHPOINT operands (by index):
-    // [0]  Patchpoint ID (e.g., 0)
-    // [1]  Patchpoint size (e.g., 13)
-    // [2]  Function name to call (e.g., @__ykrt_control_point)
-    // [3]  Number of arguments (e.g., 3)
-    // [4]  First argument register (e.g., $rdi)
-    // [5]  Second argument register (e.g., $rsi)
-    // [6]  Third argument register (e.g., $rdx)
-    // [7]  Zero or padding
-    // [8]  Frame pointer register (e.g., $rbp)
-    // [9]  Stack offset (relative to frame pointer, e.g., -48)
-    // ...
     PatchPointOpers Opers(&MI);
     unsigned SkipOperands = Opers.getStackMapStartIdx();
     for (unsigned i = SkipOperands, e = MI.getNumOperands(); i < e; ++i) {
