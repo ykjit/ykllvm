@@ -591,9 +591,10 @@ void StackMaps::recordStackMapOpers(
   std::set<int64_t> TrackedRegisters;
 
   // Patchpoints and stackmaps have different instruction formats.
-  // Patchpoints embed function call arguments directly into the
-  // instruction, while stackmaps are simpler and only contain the
-  // stackmap data - therefore we need to treat them differently.
+  // Patchpoints embed function and its arguments directly into the
+  // instruction (which we don't want to track), while stackmaps are
+  // simpler and only contain the stackmap data - therefore we need to
+  // treat them differently.
   //
   // Example PATCHPOINT structure:
   //   PATCHPOINT 0, 13, @__ykrt_control_point, 3, $rdi, $rsi, $rdx, 0,
