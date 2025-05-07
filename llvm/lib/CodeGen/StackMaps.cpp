@@ -590,47 +590,29 @@ void StackMaps::recordStackMapOpers(
   const TargetRegisterInfo *TRI = AP.MF->getSubtarget().getRegisterInfo();
   std::set<int64_t> TrackedRegisters;
 
-  // Patchpoints and stackmaps have different instruction formats.
-  // Patchpoints embed function and its arguments directly into the
-  // instruction (which we don't want to track), while stackmaps are
-  // simpler and only contain the stackmap data - therefore we need to
-  // treat them differently.
+  // Patchpoints and stackmaps require different handling for operand tracking:
   //
-  // Example PATCHPOINT structure:
-  //   PATCHPOINT 0, 13, @__ykrt_control_point, 3, $rdi, $rsi, $rdx, 0,
-  //   $rbp, -48, ...
-  // PATCHPOINT operands (by index):
-  // [0]  Patchpoint ID (e.g., 0)
-  // [1]  Patchpoint size (e.g., 13)
-  // [2]  Function name to call (e.g., @__ykrt_control_point)
-  // [3]  Number of arguments (e.g., 3)
-  // [4]  First argument register (e.g., $rdi)
-  // [5]  Second argument register (e.g., $rsi)
-  // [6]  Third argument register (e.g., $rdx)
-  // [7]  Zero or padding
-  // [8+] Operands
-  // ...
+  // For PATCHPOINT, we use `getStackMapStartIdx` to determine the starting
+  // index of stackmap data, allowing us to skip function call arguments
+  // embedded in the instruction.
   //
-  // Example STACKMAP structure:
-  //   STACKMAP 3, 0, 0, $rbp, -48, 3, $r14, 3, $r13, 3, 1, 8, ...
-  // STACKMAP operands (by index):
-  // [0]  Stackmap ID (e.g., 3)
-  // [1]  Reserved/flags (e.g., 0)
-  // [2]  Reserved/padding (e.g., 0)
-  // [3+] Operands
-  // ...
+  // For STACKMAP, we use `getVarIdx` to get the index of variable operands
+  // and track all operands from that point onward.
   if (MI.getOpcode() == TargetOpcode::PATCHPOINT) {
     PatchPointOpers Opers(&MI);
-    for (unsigned I = Opers.getStackMapStartIdx(); I < MI.getNumOperands(); I++){
+    for (unsigned I = Opers.getStackMapStartIdx(); I < MI.getNumOperands();
+         I++) {
       const MachineOperand &Op = MI.getOperand(I);
       if (Op.isReg() && !Op.isImplicit() && !Op.isUndef()) {
         TrackedRegisters.insert(getDwarfRegNum(Op.getReg(), TRI));
       }
     }
   } else {
-    for (const auto *Op = MI.operands_begin(); Op != MI.operands_end(); Op++) {
-      if (Op->isReg() && !Op->isImplicit() && !Op->isUndef()) {
-        TrackedRegisters.insert(getDwarfRegNum(Op->getReg(), TRI));
+    StackMapOpers Opers(&MI);
+    for (unsigned I = Opers.getVarIdx(); I < MI.getNumOperands(); I++) {
+      const MachineOperand &Op = MI.getOperand(I);
+      if (Op.isReg() && !Op.isImplicit() && !Op.isUndef()) {
+        TrackedRegisters.insert(getDwarfRegNum(Op.getReg(), TRI));
       }
     }
   }
