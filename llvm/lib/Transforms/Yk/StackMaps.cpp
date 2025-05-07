@@ -53,7 +53,7 @@ public:
       return false;
     }
 
-    std::map<Instruction *, std::vector<Value *>> SMCalls;
+    std::vector<std::pair<Instruction *, std::vector<Value *>>> SMCalls;
     for (Function &F : M) {
       if (F.empty()) // skip declarations.
         continue;
@@ -92,7 +92,7 @@ public:
             // using the live variables *after* the call, but making sure not to
             // include the value computed by `I` itself (since that doesn't
             // exist at the time of the call).
-            SMCalls.insert({&I, LA.getLiveVarsBefore(&I)});
+            SMCalls.push_back({&I, LA.getLiveVarsBefore(&I)});
 
             if (!CI.isIndirectCall() &&
                 CI.getCalledFunction()->getName().startswith("__yk_promote")) {
@@ -102,12 +102,12 @@ public:
               // replace them with a guard that deopts to immediately after the
               // call (at which point the return value is live and needs to be
               // materialised for correctness).
-              SMCalls[&I].push_back(&CI);
+              SMCalls.back().second.push_back(&CI);
             }
           } else if ((isa<BranchInst>(I) &&
                       cast<BranchInst>(I).isConditional()) ||
                      isa<SwitchInst>(I)) {
-            SMCalls.insert({&I, LA.getLiveVarsBefore(&I)});
+            SMCalls.push_back({&I, LA.getLiveVarsBefore(&I)});
           }
         }
       }
@@ -118,9 +118,9 @@ public:
 
     uint64_t Count = StackmapIDStart;
     Value *Shadow = ConstantInt::get(Type::getInt32Ty(Context), 0);
-    for (auto It : SMCalls) {
-      Instruction *I = cast<Instruction>(It.first);
-      const std::vector<Value *> L = It.second;
+    for (std::pair<Instruction *, std::vector<Value *>> P : SMCalls) {
+      Instruction *I = cast<Instruction>(P.first);
+      const std::vector<Value *> L = P.second;
 
       IRBuilder<> Bldr(I);
       Value *SMID = ConstantInt::get(Type::getInt64Ty(Context), Count);
