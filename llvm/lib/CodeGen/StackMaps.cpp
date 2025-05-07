@@ -621,9 +621,8 @@ void StackMaps::recordStackMapOpers(
   // ...
   if (MI.getOpcode() == TargetOpcode::PATCHPOINT) {
     PatchPointOpers Opers(&MI);
-    unsigned SkipOperands = Opers.getStackMapStartIdx();
-    for (unsigned i = SkipOperands, e = MI.getNumOperands(); i < e; ++i) {
-      const MachineOperand &Op = MI.getOperand(i);
+    for (unsigned I = Opers.getStackMapStartIdx(); I < MI.getNumOperands(); I++){
+      const MachineOperand &Op = MI.getOperand(I);
       if (Op.isReg() && !Op.isImplicit() && !Op.isUndef()) {
         TrackedRegisters.insert(getDwarfRegNum(Op.getReg(), TRI));
       }
