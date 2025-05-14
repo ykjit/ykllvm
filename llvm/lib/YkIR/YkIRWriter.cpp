@@ -697,6 +697,9 @@ private:
     for (unsigned OI = 0; OI < I->arg_size(); OI++) {
       serialiseOperand(I, FLCtxt, I->getOperand(OI));
     }
+    // safepoint
+    CallInst *SMI = dyn_cast<CallInst>(I->getNextNonDebugInstruction());
+    serialiseStackmapCall(SMI, FLCtxt);
 
     // If the return type is non-void, then this defines a local.
     if (!I->getType()->isVoidTy()) {
