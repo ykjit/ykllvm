@@ -1,0 +1,95 @@
+# RUN: llc -mtriple=x86_64-- --yk-stackmap-add-locs %s -o - | FileCheck %s
+
+# CHECK: .long	.Ltmp0-main
+# CHECK-NEXT: .short	0
+# CHECK-NEXT: .short	3
+# CHECK-NEXT: .byte	2
+# CHECK-NEXT: .byte	2
+# CHECK-NEXT: .byte	0
+# CHECK-NEXT: .short	8
+# CHECK-NEXT: .short	12
+# CHECK-NEXT: .short	0
+# CHECK-NEXT: .short	0
+# CHECK-NEXT: .long	3
+# CHECK-NEXT: .byte	1
+# CHECK-NEXT: .byte	0
+# CHECK-NEXT: .short	8
+# CHECK-NEXT: .short	13
+# CHECK-NEXT: .short	0
+# CHECK-NEXT: .short	0
+# CHECK-NEXT: .long	0
+# CHECK-NEXT: .byte	1
+# CHECK-NEXT: .byte	1
+# CHECK-NEXT: .byte	0
+# CHECK-NEXT: .short	8
+# CHECK-NEXT: .short	14
+# CHECK-NEXT: .short	0
+# CHECK-NEXT: .short	2
+# CHECK-NEXT: .short	-99
+# CHECK-NEXT: .short	5
+# CHECK-NEXT: .long	0
+# CHECK-NEXT: .byte	1
+# CHECK-NEXT: .byte	1
+# CHECK-NEXT: .byte	0
+# CHECK-NEXT: .short	8
+# CHECK-NEXT: .short	15
+# CHECK-NEXT: .short	0
+# CHECK-NEXT: .short	2
+# CHECK-NEXT: .short	-16
+# CHECK-NEXT: .short	-8
+# CHECK-NEXT: .long	0
+# CHECK-NEXT: .p2align	3, 0x0
+# CHECK-NEXT: .short	0
+# CHECK-NEXT: .short	2
+# CHECK-NEXT: .short	0
+# CHECK-NEXT: .byte	0
+# CHECK-NEXT: .byte	8
+# CHECK-NEXT: .short	7
+# CHECK-NEXT: .byte	0
+# CHECK-NEXT: .byte	8
+# CHECK-NEXT: .p2align	3, 0x0
+
+---
+name: dummy_control_point
+tracksRegLiveness: true
+frameInfo:
+  stackSize: 8
+body: |
+  bb.0:
+    $rbp = frame-setup MOV64rr $rsp
+    $rax = MOV64ri 0    ; Return value = 0
+    RET64 $rax
+---
+---
+name: main
+tracksRegLiveness: true
+frameInfo:
+  hasPatchPoint:   true
+  stackSize:       24
+stack:
+  - { id: 0, type: spill-slot, offset: -8, size: 8, alignment: 8 }
+  - { id: 1, type: spill-slot, offset: -16, size: 8, alignment: 8 }
+  - { id: 2, type: spill-slot, offset: -24, size: 8, alignment: 8 }
+body: |
+  bb.0:
+    $rdi = MOV64ri 1
+    $r12 = MOV64ri 6
+    $r13 = MOV64ri 6
+    $r14 = MOV64ri 6
+    $r15 = MOV64ri 1
+
+    MOV64mr $rbp, 1, $noreg, -8, $noreg, $r15 :: (store (s64) into %stack.0)
+    MOV64mr $rbp, 1, $noreg, -16, $noreg, $r15 :: (store (s64) into %stack.0)
+    MOV64mr $rbp, 1, $noreg, -99, $noreg, $r14 :: (store (s64) into %stack.0)
+    MOV64mr $rbp, 1, $noreg, 5, $noreg, $r14 :: (store (s64) into %stack.0)
+
+    $rdi = MOV64rr $r14
+    ; Tracking registers r14 and r15
+    PATCHPOINT 123, 16, @dummy_control_point, 1, 0, $rdi, 0, $r12, 3, $r13, 3, $r14, 3, $r15, 3, implicit-def dead early-clobber $r13
+
+    JMP_1 %bb.1
+
+  bb.1:
+  ; predecessors: %bb.0
+    liveins: $rax
+    RET64 $rax
