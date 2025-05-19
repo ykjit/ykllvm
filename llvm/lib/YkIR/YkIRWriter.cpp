@@ -746,15 +746,12 @@ private:
         }
 
         if (Attr.getKindAsEnum() == Attribute::Alignment) {
-          // Following what we do with loads/stores, we accept any alignment
-          // value greater-than or equal-to the size of the object.
+          // Currently the trace code generator doesn't take advantage of
+          // alignment guarantees, so for now we ignore `align` attributes.
           //
-          // FIXME: explicitly encode the alignment requirements into the IR
-          // and let the JIT codegen deal with it.
-          if (I->getParamAlign(AI) >=
-              DL.getTypeAllocSize(I->getArgOperand(AI)->getType())) {
-            continue;
-          }
+          // Later we should encode the alignment information (and probably
+          // `nonull` too) into the AOT IR so that it can be used by the JIT.
+          continue;
         }
 
         serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
