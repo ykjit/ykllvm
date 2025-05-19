@@ -773,9 +773,11 @@ private:
     for (auto &Attr : FnAttrs) {
       // - `cold` can be ignored.
       // - `nounwind` has no consequences for us at the moment.
+      // - `returnstwice` can be ignored.
       if (Attr.isEnumAttribute() &&
           ((Attr.getKindAsEnum() == Attribute::Cold) ||
-           (Attr.getKindAsEnum() == Attribute::NoUnwind))) {
+           (Attr.getKindAsEnum() == Attribute::NoUnwind) ||
+           (Attr.getKindAsEnum() == Attribute::ReturnsTwice))) {
         continue;
       }
       // Anything else, we've not thought about.
