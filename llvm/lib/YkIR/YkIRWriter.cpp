@@ -119,6 +119,7 @@ enum CastKind {
   CastKindBitCast = 6,
   CastKindPtrToInt = 7,
   CastKindIntToPtr = 8,
+  CastKindUIToFP = 9,
 };
 
 // A predicate used in an integer comparison.
@@ -1338,6 +1339,8 @@ private:
       return CastKindPtrToInt;
     case Instruction::IntToPtr:
       return CastKindIntToPtr;
+    case Instruction::UIToFP:
+      return CastKindUIToFP;
     default:
       return nullopt;
     }
