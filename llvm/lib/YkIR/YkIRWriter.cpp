@@ -697,6 +697,9 @@ private:
     for (unsigned OI = 0; OI < I->arg_size(); OI++) {
       serialiseOperand(I, FLCtxt, I->getOperand(OI));
     }
+    // safepoint
+    CallInst *SMI = dyn_cast<CallInst>(I->getNextNonDebugInstruction());
+    serialiseStackmapCall(SMI, FLCtxt);
 
     // If the return type is non-void, then this defines a local.
     if (!I->getType()->isVoidTy()) {
@@ -743,15 +746,12 @@ private:
         }
 
         if (Attr.getKindAsEnum() == Attribute::Alignment) {
-          // Following what we do with loads/stores, we accept any alignment
-          // value greater-than or equal-to the size of the object.
+          // Currently the trace code generator doesn't take advantage of
+          // alignment guarantees, so for now we ignore `align` attributes.
           //
-          // FIXME: explicitly encode the alignment requirements into the IR
-          // and let the JIT codegen deal with it.
-          if (I->getParamAlign(AI) >=
-              DL.getTypeAllocSize(I->getArgOperand(AI)->getType())) {
-            continue;
-          }
+          // Later we should encode the alignment information (and probably
+          // `nonull` too) into the AOT IR so that it can be used by the JIT.
+          continue;
         }
 
         serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
@@ -773,9 +773,11 @@ private:
     for (auto &Attr : FnAttrs) {
       // - `cold` can be ignored.
       // - `nounwind` has no consequences for us at the moment.
+      // - `returnstwice` can be ignored.
       if (Attr.isEnumAttribute() &&
           ((Attr.getKindAsEnum() == Attribute::Cold) ||
-           (Attr.getKindAsEnum() == Attribute::NoUnwind))) {
+           (Attr.getKindAsEnum() == Attribute::NoUnwind) ||
+           (Attr.getKindAsEnum() == Attribute::ReturnsTwice))) {
         continue;
       }
       // Anything else, we've not thought about.
