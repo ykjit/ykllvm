@@ -36,6 +36,7 @@
 // call.
 //===----------------------------------------------------------------------===//
 
+#include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -84,10 +85,10 @@ public:
 char FixStackmapsSpillReloads::ID = 0;
 char &llvm::FixStackmapsSpillReloadsID = FixStackmapsSpillReloads::ID;
 
-INITIALIZE_PASS_BEGIN(FixStackmapsSpillReloads, DEBUG_TYPE, "Fixup Stackmap Spills",
-                      false, false)
-INITIALIZE_PASS_END(FixStackmapsSpillReloads, DEBUG_TYPE, "Fixup Stackmap Spills",
-                    false, false)
+INITIALIZE_PASS_BEGIN(FixStackmapsSpillReloads, DEBUG_TYPE,
+                      "Fixup Stackmap Spills", false, false)
+INITIALIZE_PASS_END(FixStackmapsSpillReloads, DEBUG_TYPE,
+                    "Fixup Stackmap Spills", false, false)
 
 const TargetRegisterInfo *TRI;
 
@@ -98,6 +99,7 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
   for (MachineBasicBlock &MBB : MF) {
     bool Collect = false;
     std::set<MachineInstr *> Erased;
+    std::set<MachineInstr *> NewInstrs;
     MachineInstr *LastCall = nullptr;
     std::map<Register, MachineInstr *> Spills;
     for (MachineInstr &MI : MBB) {
@@ -107,7 +109,8 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
         if (MI.getOpcode() != TargetOpcode::STACKMAP &&
             MI.getOpcode() != TargetOpcode::PATCHPOINT) {
           MachineOperand Op = MI.getOperand(0);
-          if (Op.isGlobal() && Op.getGlobal()->getGlobalIdentifier() == YK_TRACE_FUNCTION) {
+          if (Op.isGlobal() &&
+              Op.getGlobal()->getGlobalIdentifier() == YK_TRACE_FUNCTION) {
             // `YK_TRACE_FUNCTION` calls don't require stackmaps so we don't
             // need to adjust anything here. In fact, doing so will skew any
             // stackmap that follows.
@@ -135,8 +138,8 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
         // Assemble a new stackmap instruction by copying over the operands of
         // the old instruction to the new one, while replacing spilled operands
         // as we go.
-        MachineInstr *NewMI =
-          MF.CreateMachineInstr(TII->get(TargetOpcode::STACKMAP), MI.getDebugLoc(), true);
+        MachineInstr *NewMI = MF.CreateMachineInstr(
+            TII->get(TargetOpcode::STACKMAP), MI.getDebugLoc(), true);
         MachineInstrBuilder MIB(MF, NewMI);
         // Copy ID and shadow
         auto *MOI = MI.operands_begin();
@@ -166,19 +169,29 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
                 // If the reload is a load from the stack, replace the operand
                 // with multiple operands describing a stack location.
                 std::optional<unsigned> Size = SMI->getRestoreSize(TII);
-                if(!Size.has_value()) {
-                  // This reload isn't a spill (e.g. this could be loading an
-                  // argument passed via the stack), so we don't need to
-                  // replace it. Since registers in lower frames aren't reset
-                  // during deopt, this is only of consequence to the top stack
-                  // frame. And even there this will simply temporarily put a
-                  // value into the register MOI, only to then immediately
-                  // reload the same value into MOI once the reload instruction
-                  // `SMI` is executed after deopt returns to normal execution.
-                  MIB.add(*MOI);
+                if (!Size.has_value()) {
+                  // This reload isn't a spill, e.g. this could be loading an
+                  // argument passed via the stack and look like this:
+                  //
+                  //   mov rax, rbp + 10
+                  //   STACKMAP rax
+                  //
+                  // We know that, after moving the stackmap, following the
+                  // stackmap instruction we'll immediately write to the
+                  // tracked register, so there is no need to track it at all.
+                  // However, we can't just remove the operand as that would
+                  // change the order of the tracked values and means we can't
+                  // match them to LLVM IR operands anymore. Leaving the
+                  // operand in also doesn't work as the verifier then
+                  // sometimes complains about the use of undefined registers.
+                  // Instead, we can just insert a constant `0xdead`, which has
+                  // no consequences for deopt (it will just be ignored) but is
+                  // something we can easily spot if things go wrong.
+                  MIB.addImm(StackMaps::ConstantOp);
+                  MIB.addImm(0xdead);
                 } else {
                   MIB.addImm(StackMaps::IndirectMemRefOp);
-                  MIB.addImm(Size.value()); // Size
+                  MIB.addImm(Size.value());    // Size
                   MIB.add(SMI->getOperand(1)); // Register
                   MIB.add(SMI->getOperand(4)); // Offset
                 }
@@ -194,30 +207,32 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
           // Copy all other operands over as is.
           MIB.add(*MOI);
           switch (MOI->getImm()) {
-            default:
-              llvm_unreachable("Unrecognized operand type.");
-            case StackMaps::DirectMemRefOp: {
-              MOI++;
-              MIB.add(*MOI); // Register
-              MOI++;
-              MIB.add(*MOI); // Offset
-              break;
-            }
-            case StackMaps::IndirectMemRefOp: {
-              MOI++;
-              MIB.add(*MOI); // Size
-              MOI++;
-              MIB.add(*MOI); // Register
-              MOI++;
-              MIB.add(*MOI); // Offset
-              break;
-            }
-            case StackMaps::ConstantOp: {
-              MOI++;
-              MIB.add(*MOI);
-              break;
-            }
-            case StackMaps::NextLive: {break;}
+          default:
+            llvm_unreachable("Unrecognized operand type.");
+          case StackMaps::DirectMemRefOp: {
+            MOI++;
+            MIB.add(*MOI); // Register
+            MOI++;
+            MIB.add(*MOI); // Offset
+            break;
+          }
+          case StackMaps::IndirectMemRefOp: {
+            MOI++;
+            MIB.add(*MOI); // Size
+            MOI++;
+            MIB.add(*MOI); // Register
+            MOI++;
+            MIB.add(*MOI); // Offset
+            break;
+          }
+          case StackMaps::ConstantOp: {
+            MOI++;
+            MIB.add(*MOI);
+            break;
+          }
+          case StackMaps::NextLive: {
+            break;
+          }
           }
           MOI++;
         }
@@ -231,6 +246,7 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
         MI.getParent()->insertAfter(LastCall, NewMI);
         // Remember the old stackmap instruction for deletion later.
         Erased.insert(&MI);
+        NewInstrs.insert(NewMI);
         LastCall = nullptr;
         Changed = true;
       }
@@ -259,7 +275,31 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
     for (MachineInstr *E : Erased) {
       E->eraseFromParent();
     }
-  }
+    if (Erased.size() > 0) {
+      // Did we move any stackmaps around? If so, recompute register liveness
+      // which we may have messed up.
+      recomputeLivenessFlags(MBB);
+    }
 
+    // Remove any implicit kills that are no longer valid.
+    for (MachineInstr *MI : NewInstrs) {
+      // Iterate backwards as we are removing operands as we go along.
+      MachineInstr::mop_iterator Imp = MI->implicit_operands().end();
+      MachineInstr::mop_iterator ImpEnd = MI->implicit_operands().begin();
+      for (; Imp != ImpEnd;) {
+        Imp--;
+        if (Imp->isReg() && Imp->isKill()) {
+          if (MBB.computeRegisterLiveness(TRI, Imp->getReg(), MI) ==
+              MachineBasicBlock::LivenessQueryResult::LQR_Live) {
+            MI->removeOperand(MI->getOperandNo(Imp));
+          }
+        }
+      }
+    }
+  }
+  if (Changed) {
+    // If we've made any changes, verify them.
+    MF.verify();
+  }
   return Changed;
 }

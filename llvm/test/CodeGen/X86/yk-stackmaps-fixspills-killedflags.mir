@@ -1,0 +1,75 @@
+# RUN: llc -mtriple=x86_64-- -stop-after fix-stackmaps-spill-reloads --yk-insert-stackmaps --yk-stackmap-spillreloads-fix %s -o - | FileCheck %s
+
+# Check that we properly recompute register liveness flags after moving around
+# stackmap instructions in the `FixStackmapsSpillReloads` pass.
+# A scenario where this can happen is the following:
+#
+#   CALL @foo
+#   mov rax, killed rcx
+#   STACKMAP rax, rbx
+#
+# After the pass this would become:
+#
+#   CALL @foo
+#   STACKMAP killed rcx, rbx
+#   mov rax, killed rcx
+#
+# This is incorrect as we have copied over the `killed` flags when updating
+# the stackmap operands. To avoid this, the pass now runs the
+# `recomputeLivenessFlags` function on any machine block we've changed.
+#
+# We also check that `implicit kill`s are removed from stackmaps, when they are
+# no longer valid.
+#
+# Lastly, we check that loads from the stack that aren't actual spills, are
+# replaced with the constant `0xdead` (57005).
+
+# CHECK-LABEL: bb.0:
+# CHECK-LABEL: STACKMAP 1, 0, $rcx, 3, 3
+# CHECK-NEXT: $rax = MOV64rr killed $rcx
+# CHECK-LABEL: STACKMAP 2, 0, $rdx, 3
+# CHECK-NEXT: dead $rbx = MOV64rr killed $rdx
+# CHECK-LABEL: STACKMAP 3, 0, 2, 57005, 3, 3
+
+name: main
+tracksRegLiveness: true
+frameInfo:
+  hasStackMap:     true
+  stackSize:       24
+stack:
+  - { id: 0, type: spill-slot, offset: -8, size: 8, alignment: 8 }
+  - { id: 1, type: spill-slot, offset: -16, size: 8, alignment: 8 }
+  - { id: 2, type: spill-slot, offset: -24, size: 8, alignment: 8 }
+fixedStack:
+  - { id: 3, type: default, offset: 16, size: 4, alignment: 8 }
+body: |
+  bb.0:
+    successors: %bb.1
+    $rbp = frame-setup MOV64rr $rsp
+    $rcx = MOV64rm $rbp, 1, $noreg, -8, $noreg :: (load (s64) from %stack.0)
+    $rdx = MOV64rm $rbp, 1, $noreg, -16, $noreg :: (load (s64) from %stack.1)
+    JMP_1 %bb.1
+
+  bb.1:
+  ; predecessors: %bb.0, %bb.2
+    liveins: $rcx, $rdx
+    CALL64pcrel32 @main
+    $rax = MOV64rr $rcx
+    STACKMAP 1, 0, killed $rcx, 3
+    JMP_1 %bb.2
+
+  bb.2:
+  ; predecessors: %bb.0, %bb.2
+    liveins: $rdx, $rdx
+    CALL64pcrel32 @main
+    $rbx = MOV64rr killed $rdx
+    STACKMAP 2, 0, $rbx, 3, implicit killed $rbx
+    JMP_1 %bb.3
+
+  bb.3:
+  ; predecessors: %bb.2
+    liveins: $rax
+    CALL64pcrel32 @main
+    renamable $r10d = MOV32rm $rbp, 1, $noreg, 16, $noreg :: (load (s32) from %fixed-stack.3)
+    STACKMAP 3, 0, $r10d, 3
+    RET64 $rax
