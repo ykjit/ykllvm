@@ -36,6 +36,7 @@
 // call.
 //===----------------------------------------------------------------------===//
 
+#include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunction.h"
@@ -46,7 +47,6 @@
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/StackMaps.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
-#include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Support/Debug.h"
@@ -85,10 +85,10 @@ public:
 char FixStackmapsSpillReloads::ID = 0;
 char &llvm::FixStackmapsSpillReloadsID = FixStackmapsSpillReloads::ID;
 
-INITIALIZE_PASS_BEGIN(FixStackmapsSpillReloads, DEBUG_TYPE, "Fixup Stackmap Spills",
-                      false, false)
-INITIALIZE_PASS_END(FixStackmapsSpillReloads, DEBUG_TYPE, "Fixup Stackmap Spills",
-                    false, false)
+INITIALIZE_PASS_BEGIN(FixStackmapsSpillReloads, DEBUG_TYPE,
+                      "Fixup Stackmap Spills", false, false)
+INITIALIZE_PASS_END(FixStackmapsSpillReloads, DEBUG_TYPE,
+                    "Fixup Stackmap Spills", false, false)
 
 const TargetRegisterInfo *TRI;
 
@@ -109,7 +109,8 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
         if (MI.getOpcode() != TargetOpcode::STACKMAP &&
             MI.getOpcode() != TargetOpcode::PATCHPOINT) {
           MachineOperand Op = MI.getOperand(0);
-          if (Op.isGlobal() && Op.getGlobal()->getGlobalIdentifier() == YK_TRACE_FUNCTION) {
+          if (Op.isGlobal() &&
+              Op.getGlobal()->getGlobalIdentifier() == YK_TRACE_FUNCTION) {
             // `YK_TRACE_FUNCTION` calls don't require stackmaps so we don't
             // need to adjust anything here. In fact, doing so will skew any
             // stackmap that follows.
@@ -137,8 +138,8 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
         // Assemble a new stackmap instruction by copying over the operands of
         // the old instruction to the new one, while replacing spilled operands
         // as we go.
-        MachineInstr *NewMI =
-          MF.CreateMachineInstr(TII->get(TargetOpcode::STACKMAP), MI.getDebugLoc(), true);
+        MachineInstr *NewMI = MF.CreateMachineInstr(
+            TII->get(TargetOpcode::STACKMAP), MI.getDebugLoc(), true);
         MachineInstrBuilder MIB(MF, NewMI);
         // Copy ID and shadow
         auto *MOI = MI.operands_begin();
@@ -168,7 +169,7 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
                 // If the reload is a load from the stack, replace the operand
                 // with multiple operands describing a stack location.
                 std::optional<unsigned> Size = SMI->getRestoreSize(TII);
-                if(!Size.has_value()) {
+                if (!Size.has_value()) {
                   // This reload isn't a spill, e.g. this could be loading an
                   // argument passed via the stack and look like this:
                   //
@@ -190,7 +191,7 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
                   MIB.addImm(0xdead);
                 } else {
                   MIB.addImm(StackMaps::IndirectMemRefOp);
-                  MIB.addImm(Size.value()); // Size
+                  MIB.addImm(Size.value());    // Size
                   MIB.add(SMI->getOperand(1)); // Register
                   MIB.add(SMI->getOperand(4)); // Offset
                 }
@@ -206,30 +207,32 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
           // Copy all other operands over as is.
           MIB.add(*MOI);
           switch (MOI->getImm()) {
-            default:
-              llvm_unreachable("Unrecognized operand type.");
-            case StackMaps::DirectMemRefOp: {
-              MOI++;
-              MIB.add(*MOI); // Register
-              MOI++;
-              MIB.add(*MOI); // Offset
-              break;
-            }
-            case StackMaps::IndirectMemRefOp: {
-              MOI++;
-              MIB.add(*MOI); // Size
-              MOI++;
-              MIB.add(*MOI); // Register
-              MOI++;
-              MIB.add(*MOI); // Offset
-              break;
-            }
-            case StackMaps::ConstantOp: {
-              MOI++;
-              MIB.add(*MOI);
-              break;
-            }
-            case StackMaps::NextLive: {break;}
+          default:
+            llvm_unreachable("Unrecognized operand type.");
+          case StackMaps::DirectMemRefOp: {
+            MOI++;
+            MIB.add(*MOI); // Register
+            MOI++;
+            MIB.add(*MOI); // Offset
+            break;
+          }
+          case StackMaps::IndirectMemRefOp: {
+            MOI++;
+            MIB.add(*MOI); // Size
+            MOI++;
+            MIB.add(*MOI); // Register
+            MOI++;
+            MIB.add(*MOI); // Offset
+            break;
+          }
+          case StackMaps::ConstantOp: {
+            MOI++;
+            MIB.add(*MOI);
+            break;
+          }
+          case StackMaps::NextLive: {
+            break;
+          }
           }
           MOI++;
         }
@@ -278,7 +281,6 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
       recomputeLivenessFlags(MBB);
     }
 
-
     // Remove any implicit kills that are no longer valid.
     for (MachineInstr *MI : NewInstrs) {
       // Iterate backwards as we are removing operands as we go along.
@@ -287,7 +289,8 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
       for (; Imp != ImpEnd;) {
         Imp--;
         if (Imp->isReg() && Imp->isKill()) {
-          if (MBB.computeRegisterLiveness(TRI, Imp->getReg(), MI) == MachineBasicBlock::LivenessQueryResult::LQR_Live) {
+          if (MBB.computeRegisterLiveness(TRI, Imp->getReg(), MI) ==
+              MachineBasicBlock::LivenessQueryResult::LQR_Live) {
             MI->removeOperand(MI->getOperandNo(Imp));
           }
         }

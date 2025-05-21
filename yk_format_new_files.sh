@@ -13,7 +13,7 @@
 
 set -e
 
-YK_DIRS="./clang/test/Yk ./llvm/lib/Transforms/Yk ./llvm/include/llvm/Transforms/Yk llvm/lib/YkIR"
+YK_DIRS="./clang/test/Yk ./llvm/lib/Transforms/Yk ./llvm/include/llvm/Transforms/Yk llvm/lib/YkIR ./llvm/lib/CodeGen/Yk"
 
 if ./build/bin/clang-format -version > /dev/null 2>&1; then
     clang_format=./build/bin/clang-format
