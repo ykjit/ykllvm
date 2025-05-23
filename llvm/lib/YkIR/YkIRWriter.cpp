@@ -724,7 +724,8 @@ private:
     //   tail call codegen this". I don't even know what this means for an
     //   inlining tracer, so let's just reject it for now.
     if (I->isMustTailCall()) {
-      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
+      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
+                                        optional("musttail"));
     }
     // We don't support some parameter attributes yet.
     AttributeList Attrs = I->getAttributes();
@@ -754,13 +755,15 @@ private:
           continue;
         }
 
-        serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
+        serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
+                                          optional(Attr.getAsString()));
         return;
       }
     }
     // We don't support ANY return value attributes yet.
-    if (Attrs.getRetAttrs().getNumAttributes() > 0) {
-      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
+    for (auto &Attr : Attrs.getRetAttrs()) {
+      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
+                                        optional(Attr.getAsString()));
       return;
     }
     // We don't support some function attributes.
@@ -781,7 +784,8 @@ private:
         continue;
       }
       // Anything else, we've not thought about.
-      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
+      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
+                                        optional(Attr.getAsString()));
       return;
     }
     // In addition, we don't support:
@@ -792,9 +796,17 @@ private:
     //  - non-zero address spaces
     //
     // Note: address spaces are blanket handled elsewhere in serialiseInst().
-    if ((isa<FPMathOperator>(I) && I->getFastMathFlags().any()) ||
-        (I->getCallingConv() != CallingConv::C) || I->hasOperandBundles()) {
-      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
+    if (isa<FPMathOperator>(I) && I->getFastMathFlags().any()) {
+      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
+                                        optional("fastmath"));
+    }
+    if (I->getCallingConv() != CallingConv::C) {
+      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
+                                        optional("cconv"));
+    }
+    if (I->hasOperandBundles()) {
+      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
+                                        optional("bundles"));
       return;
     }
     if (I->isInlineAsm()) {
@@ -805,7 +817,8 @@ private:
       // if (!(cast<InlineAsm>(Callee)->getAsmString().empty())) {
       if (!(cast<InlineAsm>(I->getCalledOperand())->getAsmString().empty())) {
         // Non-empty asm block. We can't ignore it.
-        serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
+        serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
+                                          optional("inlineasm"));
       }
       return;
     }
@@ -1546,13 +1559,18 @@ private:
   }
 
   void serialiseUnimplementedInstruction(Instruction *I, FuncLowerCtxt &FLCtxt,
-                                         unsigned BBIdx, unsigned &InstIdx) {
+                                         unsigned BBIdx, unsigned &InstIdx,
+                                         optional<string> Note = nullopt) {
     // opcode:
     serialiseOpcode(OpCodeUnimplemented);
     // tyidx:
     OutStreamer.emitSizeT(typeIndex(I->getType()));
-    // stringified problem instruction
-    serialiseString(toString(I));
+    // stringified problem instruction with an optional note attached.
+    string S = toString(I);
+    if (Note.has_value()) {
+      S.append(string(" <note: ") + Note.value() + ">");
+    }
+    serialiseString(S);
 
     if (!I->getType()->isVoidTy()) {
       FLCtxt.updateVLMap(I, InstIdx);
