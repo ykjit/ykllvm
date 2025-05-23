@@ -755,15 +755,25 @@ private:
           continue;
         }
 
-        serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
-                                          optional(Attr.getAsString()));
+        serialiseUnimplementedInstruction(
+            I, FLCtxt, BBIdx, InstIdx,
+            optional(Attr.getAsString() + " param attr"));
         return;
       }
     }
     // We don't support ANY return value attributes yet.
     for (auto &Attr : Attrs.getRetAttrs()) {
-      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
-                                        optional(Attr.getAsString()));
+      // The function returns or has UB. I *think* this can be safely ignored.
+      if (Attr.getKindAsEnum() == Attribute::WillReturn) {
+        continue;
+      }
+      // `noalias` is an optimisation hint we can ignore.
+      if (Attr.getKindAsEnum() == Attribute::NoAlias) {
+        continue;
+      }
+      serialiseUnimplementedInstruction(
+          I, FLCtxt, BBIdx, InstIdx,
+          optional(Attr.getAsString() + " ret attr"));
       return;
     }
     // We don't support some function attributes.
@@ -777,15 +787,17 @@ private:
       // - `cold` can be ignored.
       // - `nounwind` has no consequences for us at the moment.
       // - `returnstwice` can be ignored.
+      // - `willreturn` function returns or has UB.
       if (Attr.isEnumAttribute() &&
           ((Attr.getKindAsEnum() == Attribute::Cold) ||
            (Attr.getKindAsEnum() == Attribute::NoUnwind) ||
-           (Attr.getKindAsEnum() == Attribute::ReturnsTwice))) {
+           (Attr.getKindAsEnum() == Attribute::ReturnsTwice) ||
+           (Attr.getKindAsEnum() == Attribute::WillReturn))) {
         continue;
       }
       // Anything else, we've not thought about.
-      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
-                                        optional(Attr.getAsString()));
+      serialiseUnimplementedInstruction(
+          I, FLCtxt, BBIdx, InstIdx, optional(Attr.getAsString() + " fn attr"));
       return;
     }
     // In addition, we don't support:
