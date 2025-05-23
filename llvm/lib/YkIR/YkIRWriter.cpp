@@ -755,15 +755,17 @@ private:
           continue;
         }
 
-        serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
-                                          optional(Attr.getAsString()));
+        serialiseUnimplementedInstruction(
+            I, FLCtxt, BBIdx, InstIdx,
+            optional(Attr.getAsString() + " param attr"));
         return;
       }
     }
     // We don't support ANY return value attributes yet.
     for (auto &Attr : Attrs.getRetAttrs()) {
-      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
-                                        optional(Attr.getAsString()));
+      serialiseUnimplementedInstruction(
+          I, FLCtxt, BBIdx, InstIdx,
+          optional(Attr.getAsString() + " ret attr"));
       return;
     }
     // We don't support some function attributes.
@@ -784,8 +786,8 @@ private:
         continue;
       }
       // Anything else, we've not thought about.
-      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
-                                        optional(Attr.getAsString()));
+      serialiseUnimplementedInstruction(
+          I, FLCtxt, BBIdx, InstIdx, optional(Attr.getAsString() + " fn attr"));
       return;
     }
     // In addition, we don't support:
