@@ -811,10 +811,12 @@ private:
     if (isa<FPMathOperator>(I) && I->getFastMathFlags().any()) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
                                         optional("fastmath"));
+      return;
     }
     if (I->getCallingConv() != CallingConv::C) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
                                         optional("cconv"));
+      return;
     }
     if (I->hasOperandBundles()) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
