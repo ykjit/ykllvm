@@ -795,6 +795,10 @@ private:
            (Attr.getKindAsEnum() == Attribute::WillReturn))) {
         continue;
       }
+      // `memory` are memory effect hints, which can be ignored.
+      if (Attr.hasAttribute(Attribute::Memory)) {
+        continue;
+      }
       // Anything else, we've not thought about.
       serialiseUnimplementedInstruction(
           I, FLCtxt, BBIdx, InstIdx, optional(Attr.getAsString() + " fn attr"));
