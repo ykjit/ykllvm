@@ -1536,7 +1536,8 @@ private:
     for (auto &O : I->operands()) {
       if (PointerType *P = dyn_cast<PointerType>(O->getType())) {
         if (P->getAddressSpace() != 0) {
-          serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
+          serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
+                                            optional("addrspace"));
           return;
         }
       }
