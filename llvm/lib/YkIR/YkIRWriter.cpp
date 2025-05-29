@@ -785,11 +785,14 @@ private:
     AttributeSet FnAttrs = Attrs.getFnAttrs();
     for (auto &Attr : FnAttrs) {
       // - `cold` can be ignored.
+      // - `noreturn` is for functions like `longjmp` which we handle at the
+      //    trace builder level.
       // - `nounwind` has no consequences for us at the moment.
       // - `returnstwice` can be ignored.
       // - `willreturn` function returns or has UB.
       if (Attr.isEnumAttribute() &&
           ((Attr.getKindAsEnum() == Attribute::Cold) ||
+           (Attr.getKindAsEnum() == Attribute::NoReturn) ||
            (Attr.getKindAsEnum() == Attribute::NoUnwind) ||
            (Attr.getKindAsEnum() == Attribute::ReturnsTwice) ||
            (Attr.getKindAsEnum() == Attribute::WillReturn))) {
