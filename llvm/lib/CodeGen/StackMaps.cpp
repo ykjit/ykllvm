@@ -592,9 +592,30 @@ void StackMaps::recordStackMapOpers(const MCSymbol &MILabel,
 
   const TargetRegisterInfo *TRI = AP.MF->getSubtarget().getRegisterInfo();
   std::set<int64_t> TrackedRegisters;
-  for (const auto *Op = MI.operands_begin(); Op != MI.operands_end(); Op++) {
-    if (Op->isReg() && !Op->isImplicit() && !Op->isUndef()) {
-      TrackedRegisters.insert(getDwarfRegNum(Op->getReg(), TRI));
+  // Patchpoints and stackmaps require different handling for operand tracking:
+  //
+  // For PATCHPOINT, we use `getStackMapStartIdx` to determine the starting
+  // index of stackmap data, allowing us to skip function call arguments
+  // embedded in the instruction.
+  //
+  // For STACKMAP, we use `getVarIdx` to get the index of variable operands
+  // and track all operands from that point onward.
+  if (MI.getOpcode() == TargetOpcode::PATCHPOINT) {
+    PatchPointOpers Opers(&MI);
+    for (unsigned I = Opers.getStackMapStartIdx(); I < MI.getNumOperands();
+         I++) {
+      const MachineOperand &Op = MI.getOperand(I);
+      if (Op.isReg() && !Op.isImplicit() && !Op.isUndef()) {
+        TrackedRegisters.insert(getDwarfRegNum(Op.getReg(), TRI));
+      }
+    }
+  } else {
+    StackMapOpers Opers(&MI);
+    for (unsigned I = Opers.getVarIdx(); I < MI.getNumOperands(); I++) {
+      const MachineOperand &Op = MI.getOperand(I);
+      if (Op.isReg() && !Op.isImplicit() && !Op.isUndef()) {
+        TrackedRegisters.insert(getDwarfRegNum(Op.getReg(), TRI));
+      }
     }
   }
 
@@ -695,7 +716,7 @@ void StackMaps::recordPatchPoint(
   PatchPointOpers opers(&MI);
   const int64_t ID = opers.getID();
   auto MOI = std::next(MI.operands_begin(), opers.getStackMapStartIdx());
-  recordStackMapOpers(L, MI, ID, MOI, MI.operands_end(), {},
+  recordStackMapOpers(L, MI, ID, MOI, MI.operands_end(), SpillOffsets,
                       opers.isAnyReg() && opers.hasDef());
 
 #ifndef NDEBUG

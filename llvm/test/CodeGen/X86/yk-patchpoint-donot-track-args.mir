@@ -1,0 +1,106 @@
+# RUN: llc -mtriple=x86_64-- --yk-stackmap-add-locs %s -o - | FileCheck %s
+
+# Check that patchpoint instructions correctly track additional locations for
+# registers when using the `--yk-stackmap-add-locs` flag, while ensuring that
+# patchpoint arguments themselves are not incorrectly treated as tracked locations
+# (which was a previous bug).
+#
+# For example:
+#
+#   mov [rbp-99], r14    ; Spill r14 to stack
+#   mov rdi, r14         ; Copy r14 to argument register
+#   PATCHPOINT 123, rdi  ; Create stackmap for the value
+#
+# After the pass, the stackmap should include the additional location rbp-99 for r14.
+#
+# Test cases:
+# - r14: spilled to two locations (-99 and 5)
+# - r15: spilled to two adjacent frame slots (-16 and -8)
+# - r13: no spills
+
+# CHECK: .quad   123
+# CHECK-NEXT: .long   .Ltmp0-main
+# CHECK-NEXT: .short  0
+# CHECK-NEXT: .short  2
+# CHECK-NEXT: .byte   2
+# CHECK-NEXT: .byte   2
+# CHECK-NEXT: .byte   0
+# CHECK-NEXT: .short  8
+
+# First live variable - r13
+# CHECK-NEXT: .short  13
+# CHECK-NEXT: .short  0
+# CHECK-NEXT: .short  0
+# CHECK-NEXT: .long   3
+# CHECK-NEXT: .byte   1
+# CHECK-NEXT: .byte   0
+# CHECK-NEXT: .short  8
+
+# Second live variable - r14
+# CHECK-NEXT: .short  14
+# CHECK-NEXT: .short  0
+# CHECK-NEXT: .short  2
+# CHECK-NEXT: .short  -99
+# CHECK-NEXT: .short  5
+# CHECK-NEXT: .long   0
+# CHECK-NEXT: .byte   1
+# CHECK-NEXT: .byte   1
+# CHECK-NEXT: .byte   0
+# CHECK-NEXT: .short  8
+
+# Third live variable - r15
+# CHECK-NEXT: .short  15
+# CHECK-NEXT: .short  0
+# CHECK-NEXT: .short  2
+# CHECK-NEXT: .short  -16
+# CHECK-NEXT: .short  -8
+# CHECK-NEXT: .long   0
+---
+name: dummy_control_point
+tracksRegLiveness: true
+frameInfo:
+  stackSize: 8
+body: |
+  bb.0:
+    $rbp = frame-setup MOV64rr $rsp
+    $rax = MOV64ri 0    ; Return value = 0
+    RET64 $rax
+---
+---
+name: main
+tracksRegLiveness: true
+frameInfo:
+  hasPatchPoint:   true
+  stackSize:       24
+stack:
+  - { id: 0, type: spill-slot, offset: -8, size: 8, alignment: 8 }
+  - { id: 1, type: spill-slot, offset: -16, size: 8, alignment: 8 }
+  - { id: 2, type: spill-slot, offset: -24, size: 8, alignment: 8 }
+body: |
+  bb.0:
+    ; Initialize registers with test values
+    $rdi = MOV64ri 1
+    $r13 = MOV64ri 6
+    $r14 = MOV64ri 6
+    $r15 = MOV64ri 1
+
+    ; Store r15 to two stack locations
+    MOV64mr $rbp, 1, $noreg, -8, $noreg, $r15 :: (store (s64) into %stack.0)
+    MOV64mr $rbp, 1, $noreg, -16, $noreg, $r15 :: (store (s64) into %stack.0)
+    
+    ; Store r14 to two different stack locations
+    MOV64mr $rbp, 1, $noreg, -99, $noreg, $r14 :: (store (s64) into %stack.0)
+    MOV64mr $rbp, 1, $noreg, 5, $noreg, $r14 :: (store (s64) into %stack.0)
+
+    ; Copy r14 to rdi for the function call
+    $rdi = MOV64rr $r14
+    
+    ; Patchpoint that should track r14 and r15 in both register and stack locations
+    PATCHPOINT 123, 16, @dummy_control_point, 1, 0, $rdi, 0, $r13, 3, $r14, 3, $r15, 3, implicit-def dead early-clobber $r13
+
+    JMP_1 %bb.1
+
+  bb.1:
+  ; predecessors: %bb.0
+    liveins: $rax
+    RET64 $rax
