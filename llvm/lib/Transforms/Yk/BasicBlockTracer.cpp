@@ -8,7 +8,9 @@
 #include "llvm/IR/Module.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
+#include "llvm/Transforms/Yk/ControlPoint.h"
 #include "llvm/Transforms/Yk/ModuleClone.h"
+#include "llvm/YkIR/YkIRWriter.h"
 
 #define DEBUG_TYPE "yk-basicblock-tracer-pass"
 
@@ -42,6 +44,12 @@ struct YkBasicBlockTracer : public ModulePass {
     IRBuilder<> builder(Context);
     uint32_t FunctionIndex = 0;
     for (auto &F : M) {
+      // If we won't ever trace this, don't insert calls to the tracer, as it
+      // would only slow us down.
+      if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
+        FunctionIndex++;
+        continue;
+      }
       uint32_t BlockIndex = 0;
       // FIXME: Once control point transition is implemented,
       //        only add tracing calls to unopt version.
