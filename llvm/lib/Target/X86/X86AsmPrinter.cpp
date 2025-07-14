@@ -192,8 +192,9 @@ void processInstructions(
         }
         SpillMap[DwReg].insert(Offset);
       }
-      // YKOPT: we can also remove killed registers, if any.
-      // Check other places that have a `continue` too.
+      if (MO.isKill()) {
+        killRegister(DwReg, SpillMap);
+      }
       continue;
     }
 
@@ -209,6 +210,8 @@ void processInstructions(
         clearRhs(DwReg, SpillMap);
         SpillMap[DwReg] = {Offset};
       }
+      // Can it happen? (it'd be a dead load).
+      assert(!Lhs.isKill());
       continue;
     }
 
