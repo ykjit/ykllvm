@@ -258,9 +258,7 @@ StackMaps::parseOperand(MachineInstr::const_mop_iterator MOI,
       for (auto [TrackReg, Extras]: SpillOffsets) {
         for (auto E : Extras) {
           if (E == Imm) {
-            const TargetRegisterClass *RC = TRI->getMinimalPhysRegClass(Reg);
-            Locs.emplace_back(Location::Register, TRI->getSpillSize(*RC), TrackReg,
-                              0, Extras);
+            Locs.emplace_back(Location::Register, Size, TrackReg, 0, Extras);
             return ++MOI;
           }
         }
