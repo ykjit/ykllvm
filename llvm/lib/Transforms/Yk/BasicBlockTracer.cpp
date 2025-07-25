@@ -11,7 +11,6 @@
 #include "llvm/Transforms/Yk/ControlPoint.h"
 #include "llvm/Transforms/Yk/ModuleClone.h"
 #include "llvm/YkIR/YkIRWriter.h"
-
 #define DEBUG_TYPE "yk-basicblock-tracer-pass"
 
 using namespace llvm;
@@ -23,8 +22,10 @@ void initializeYkBasicBlockTracerPass(PassRegistry &);
 namespace {
 struct YkBasicBlockTracer : public ModulePass {
   static char ID;
+  bool ModuleClone;
 
-  YkBasicBlockTracer() : ModulePass(ID) {
+  YkBasicBlockTracer(bool moduleClone)
+      : ModulePass(ID), ModuleClone(moduleClone) {
     initializeYkBasicBlockTracerPass(*PassRegistry::getPassRegistry());
   }
 
@@ -38,8 +39,14 @@ struct YkBasicBlockTracer : public ModulePass {
 
     FunctionType *FType = FunctionType::get(
         ReturnType, {FunctionIndexArgType, BlockIndexArgType}, false);
+
+    // Trace function is used to trace the execution of the program.
     Function *TraceFunc = Function::Create(
         FType, GlobalVariable::ExternalLinkage, YK_TRACE_FUNCTION, M);
+
+    // Dummy trace function is a noop function that does nothing.
+    Function *DummyTraceFunc = Function::Create(
+        FType, GlobalVariable::ExternalLinkage, YK_TRACE_FUNCTION_DUMMY, M);
 
     IRBuilder<> builder(Context);
     uint32_t FunctionIndex = 0;
@@ -51,12 +58,38 @@ struct YkBasicBlockTracer : public ModulePass {
         continue;
       }
       uint32_t BlockIndex = 0;
-      // FIXME: Once control point transition is implemented,
-      //        only add tracing calls to unopt version.
       for (auto &BB : F) {
         builder.SetInsertPoint(&*BB.getFirstInsertionPt());
-        builder.CreateCall(TraceFunc, {builder.getInt32(FunctionIndex),
-                                       builder.getInt32(BlockIndex)});
+
+        if (ModuleClone) {
+          bool isUnopt = F.getName().startswith(YK_SWT_UNOPT_PREFIX);
+          bool isAddrTaken =
+              F.getMetadata(YK_SWT_MODCLONE_FUNC_ADDR_TAKEN) != nullptr;
+
+          if (isAddrTaken || isUnopt) {
+            // Address-taken functions and unoptimised functions need real trace
+            // calls that actually record execution.
+            // 1. Address-taken functions are not cloned in ModuleClone
+            //    pass but still have tracing calls inserted. There is only one
+            //    version for these functions: unopt (note that even though
+            //    these functions are unopt they do not have the unopt prefix).
+            // 2. Unoptimised functions (with __yk_unopt_ prefix) are the
+            //    cloned versions created by module cloning.
+            builder.CreateCall(TraceFunc, {builder.getInt32(FunctionIndex),
+                                           builder.getInt32(BlockIndex)});
+          } else {
+            // Optimised functions (without __yk_unopt_ prefix and not
+            // address-taken) get dummy trace calls because we don't execute
+            // them during tracing.
+            builder.CreateCall(DummyTraceFunc, {builder.getInt32(FunctionIndex),
+                                                builder.getInt32(BlockIndex)});
+          }
+        } else {
+          // For single module - always use real trace calls.
+          builder.CreateCall(TraceFunc, {builder.getInt32(FunctionIndex),
+                                         builder.getInt32(BlockIndex)});
+        }
+
         assert(BlockIndex != UINT32_MAX &&
                "Expected BlockIndex to not overflow");
         BlockIndex++;
@@ -75,6 +108,6 @@ char YkBasicBlockTracer::ID = 0;
 INITIALIZE_PASS(YkBasicBlockTracer, DEBUG_TYPE, "yk basicblock tracer", false,
                 false)
 
-ModulePass *llvm::createYkBasicBlockTracerPass() {
-  return new YkBasicBlockTracer();
+ModulePass *llvm::createYkBasicBlockTracerPass(bool moduleClone) {
+  return new YkBasicBlockTracer(moduleClone);
 }

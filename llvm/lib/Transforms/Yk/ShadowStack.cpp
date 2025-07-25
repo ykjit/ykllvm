@@ -372,11 +372,10 @@ public:
     // If we have two control points, we need to update the cloned main
     // function as well.
     if (controlPointCount == 2) {
-      Function *UnoptMain = M.getFunction(YK_UNOPT_MAIN);
+      Function *UnoptMain = M.getFunction(YK_SWT_UNOPT_MAIN);
       if (UnoptMain == nullptr || UnoptMain->isDeclaration()) {
-        Context.emitError(
-            "Unable to add shadow stack: could not find definition "
-            "of \"__yk_unopt_main\" function!");
+        Context.emitError("Unable to add shadow stack: could not find "
+                          "definition " YK_SWT_UNOPT_MAIN " function!");
         return;
       }
 
@@ -462,7 +461,7 @@ public:
         continue;
       }
       // skip already handled main and unopt functions
-      if (F.getName() == MAIN || F.getName() == YK_UNOPT_MAIN) {
+      if (F.getName() == MAIN || F.getName() == YK_SWT_UNOPT_MAIN) {
         continue;
       }
       // skip functions that will never be traced.
