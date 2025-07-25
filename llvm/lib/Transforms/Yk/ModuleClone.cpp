@@ -1,15 +1,20 @@
 //===- ModuleClone.cpp - Yk Module Cloning Pass ---------------------------===//
 //
 // This pass duplicates functions within the module, producing both the
-// original (unoptimised) and cloned (optimised) versions of these
+// original (optimised) and cloned (unoptimised) versions of these
 // functions. The process is as follows:
 //
 // - **Cloning Criteria:**
 //   - Functions **without** their address taken are cloned. This results in two
 //     versions of such functions in the module: the original and the cloned
 //     version.
+//
 //   - Functions **with** their address taken remain only in their original form
-//     and are not cloned.
+//     and are not cloned. These functions are not cloned because then we would
+//     need to update their references in the callers to point to the newly
+//     cloned function. Since function pointers can be stored in variables,
+//     passed as arguments, etc. tracking and updating all these references is
+//     feasible but complex.
 //
 // - **Cloned Function Naming:**
 //   - The cloned functions are renamed by adding the prefix `__yk_unopt_` to
@@ -18,8 +23,16 @@
 //
 // - **Optimisation Intent:**
 //   - The **cloned functions** (those with the `__yk_unopt_` prefix) are
-//     intended to be the **unoptimised versions** of the functions.
-//   - The **original functions** remain **optimised**.
+//     intended to be the **unoptimised versions** of the functions. These
+//     functions will have the real __yk_trace_basicblock tracing calls.
+//
+//   - The **original functions** remain **optimised**. These functions are
+//     used when JIT is not tracing. These functions will have the dummy
+//     __yk_trace_basicblock_dummy tracing calls that do nothing.
+//
+//   - Since __yk_trace_basicblock_dummy calls are much cheaper than
+//     real __yk_trace_basicblock calls, dynamic transition between these
+//     versions reduces the overhead of the SWT tracing.
 //
 //===----------------------------------------------------------------------===//
 
@@ -78,8 +91,17 @@ struct YkModuleClone : public ModulePass {
       if (F.hasExternalLinkage() && F.isDeclaration()) {
         continue;
       }
+
+      // Function with address taken are not cloned.
+      // Add metadata to the function to indicate that it has address taken.
+      // This metadata is used in other passes like `BasicBlockTracer`.
+      if (F.hasAddressTaken()) {
+        MDNode *MD = MDNode::get(Context, MDString::get(Context, "true"));
+        F.setMetadata(YK_SWT_MODCLONE_FUNC_ADDR_TAKEN, MD);
+        continue;
+      }
       // Skip already cloned functions or functions with address taken.
-      if (F.hasAddressTaken() || F.getName().startswith(YK_UNOPT_PREFIX)) {
+      if (F.getName().startswith(YK_SWT_UNOPT_PREFIX)) {
         continue;
       }
       ValueToValueMapTy VMap;
@@ -96,7 +118,7 @@ struct YkModuleClone : public ModulePass {
       }
       // Rename function
       auto originalName = F.getName().str();
-      auto cloneName = Twine(YK_UNOPT_PREFIX) + originalName;
+      auto cloneName = Twine(YK_SWT_UNOPT_PREFIX) + originalName;
       ClonedFunc->setName(cloneName);
       ClonedFuncs[originalName] = ClonedFunc;
     }

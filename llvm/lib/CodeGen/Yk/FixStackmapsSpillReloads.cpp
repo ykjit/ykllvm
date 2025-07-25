@@ -110,10 +110,12 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
             MI.getOpcode() != TargetOpcode::PATCHPOINT) {
           MachineOperand Op = MI.getOperand(0);
           if (Op.isGlobal() &&
-              Op.getGlobal()->getGlobalIdentifier() == YK_TRACE_FUNCTION) {
-            // `YK_TRACE_FUNCTION` calls don't require stackmaps so we don't
-            // need to adjust anything here. In fact, doing so will skew any
-            // stackmap that follows.
+              (Op.getGlobal()->getGlobalIdentifier() == YK_TRACE_FUNCTION ||
+               Op.getGlobal()->getGlobalIdentifier() ==
+                   YK_TRACE_FUNCTION_DUMMY)) {
+            // `YK_TRACE_FUNCTION` and `YK_TRACE_FUNCTION_DUMMY` calls don't
+            // require stackmaps so we don't need to adjust anything here. In
+            // fact, doing so will skew any stackmap that follows.
             continue;
           }
           // If we see a normal function call we know it will be followed by a

@@ -76,14 +76,14 @@ entry:
 ; Check original function: inc
 ; CHECK-LABEL: define dso_local i32 @inc(i32 %x)
 ; CHECK-NEXT: entry:
-; CHECK-NEXT: call void @__yk_trace_basicblock({{.*}})
+; CHECK-NEXT: call void @__yk_trace_basicblock_dummy({{.*}})
 ; CHECK-NEXT: %0 = add i32 %x, 1
 ; CHECK-NEXT: ret i32 %0
 
 ; Check original function: my_func
 ; CHECK-LABEL: define dso_local i32 @my_func(i32 %x)
 ; CHECK-NEXT: entry:
-; CHECK-NEXT: call void @__yk_trace_basicblock({{.*}})
+; CHECK-NEXT: call void @__yk_trace_basicblock_dummy({{.*}})
 ; CHECK-NEXT: %0 = add i32 %x, 1
 ; CHECK-NEXT: %func_ptr = alloca ptr, align 8
 ; CHECK-NEXT: store ptr @func_inc_with_address_taken, ptr %func_ptr, align 8
@@ -94,7 +94,7 @@ entry:
 ; Check original function: main
 ; CHECK-LABEL: define dso_local i32 @main()
 ; CHECK-NEXT: entry:
-; CHECK-NEXT: call void @__yk_trace_basicblock({{.*}})
+; CHECK-NEXT: call void @__yk_trace_basicblock_dummy({{.*}})
 ; CHECK-NEXT: %0 = call i32 @my_func(i32 10)
 ; CHECK-NEXT: %1 = load i32, ptr @my_global
 ; CHECK-NEXT: %2 = call i32 (ptr, ...) @printf

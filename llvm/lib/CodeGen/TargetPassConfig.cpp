@@ -1144,9 +1144,9 @@ bool TargetPassConfig::addISelPasses() {
   
   // Default number of control points in a module.
   int numberOfControlPoints = 1;
-
   if (YkModuleClone) {
-    numberOfControlPoints = YK_CLONE_MODULE_CP_COUNT;
+    assert(YkBasicBlockTracer && "YkModuleClone requires YkShadowStackOpt");
+    numberOfControlPoints = YK_SWT_MODCLONE_CP_COUNT;
     addPass(createYkModuleClonePass());
   }
 
@@ -1203,7 +1203,7 @@ bool TargetPassConfig::addISelPasses() {
   }
 
   if (YkBasicBlockTracer) {
-    addPass(createYkBasicBlockTracerPass());
+    addPass(createYkBasicBlockTracerPass(YkModuleClone));
   }  
 
   addISelPrepare();

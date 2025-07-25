@@ -4,7 +4,7 @@
 #include "llvm/Pass.h"
 
 namespace llvm {
-ModulePass *createYkStackmapsPass(uint64_t stackmapIDStart);
+ModulePass *createYkStackmapsPass(uint64_t StackmapIDStart);
 } // namespace llvm
 
 #endif
