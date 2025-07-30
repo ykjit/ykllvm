@@ -324,17 +324,9 @@ StackMaps::parseOperand(MachineInstr::const_mop_iterator MOI,
     if (MOI->isReg()) {
       if (SpillOffsets.count(DwarfRegNum) > 0) {
         Extras = SpillOffsets[DwarfRegNum];
-        // Remove redundant registers/offsets that are already tracked by the
-        // stackmap or by another tracked register.
-        for (auto TReg : TrackedRegisters) {
-          if (TReg == DwarfRegNum) {
-            continue;
-          }
-          Extras.erase(TReg);
-          for (auto X : SpillOffsets[TReg]) {
-            Extras.erase(X);
-          }
-        }
+        // YKOPT: We could eliminate duplicate deopts here to take pressure off
+        // the runtime deopt routine. There is an (unsound) attempt at this in
+        // the git history (it killed too many memory deopts).
       }
     }
 
