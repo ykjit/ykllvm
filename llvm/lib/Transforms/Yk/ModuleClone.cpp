@@ -67,21 +67,19 @@ struct YkModuleClone : public ModulePass {
     initializeYkModuleClonePass(*PassRegistry::getPassRegistry());
   }
 
-  /**
-   * @brief Clones eligible functions within the given module.
-   *
-   * This function iterates over all functions in the provided LLVM module `M`
-   * and clones those that meet the following criteria:
-   *
-   * - The function does **not** have external linkage and is **not** a
-   * declaration.
-   * - The function's address is **not** taken.
-   *
-   * @param M The LLVM module containing the functions to be cloned.
-   * @return A map where the keys are the original function names and the
-   *         values are pointers to the cloned `Function` objects. Returns
-   *         a map if cloning succeeds, or `nullopt` if cloning fails.
-   */
+  /// Clones eligible functions within the given module.
+  ///
+  /// This function iterates over all functions in the provided LLVM module `M`
+  /// and clones those that meet the following criteria:
+  ///
+  /// - The function does **not** have external linkage and is **not** a
+  /// declaration.
+  /// - The function's address is **not** taken.
+  ///
+  /// @param M The LLVM module containing the functions to be cloned.
+  /// @return A map where the keys are the original function names and the
+  ///         values are pointers to the cloned `Function` objects. Returns
+  ///         a map if cloning succeeds, or `nullopt` if cloning fails.
   std::optional<std::map<std::string, Function *>>
   cloneFunctionsInModule(Module &M) {
     LLVMContext &Context = M.getContext();
@@ -125,31 +123,56 @@ struct YkModuleClone : public ModulePass {
     return ClonedFuncs;
   }
 
-  /**
-   * @brief Updates call instructions in cloned functions to reference
-   * other cloned functions.
-   *
-   * @param M The LLVM module containing the functions.
-   * @param ClonedFuncs A map of cloned function names to functions.
-   */
-  void
-  updateClonedFunctionCalls(Module &M,
-                            std::map<std::string, Function *> &ClonedFuncs) {
-    for (auto &Entry : ClonedFuncs) {
-      Function *ClonedFunc = Entry.second;
-      for (BasicBlock &BB : *ClonedFunc) {
-        for (Instruction &I : BB) {
-          if (auto *Call = dyn_cast<CallInst>(&I)) {
-            Function *CalledFunc = Call->getCalledFunction();
-            if (CalledFunc && !CalledFunc->isIntrinsic()) {
-              std::string CalledName = CalledFunc->getName().str();
-              auto It = ClonedFuncs.find(CalledName);
-              if (It != ClonedFuncs.end()) {
-                Call->setCalledFunction(It->second);
-              }
+  /// Replace all function calls within function `F` with calls to unoptimised
+  /// functions, if such a function exists.
+  ///
+  /// @param F The function whose calls should be updated.
+  /// @param ClonedFuncs Map from original function names to their cloned
+  ///        versions.
+  void updateCallsInFunction(Function *F,
+                             std::map<std::string, Function *> &ClonedFuncs) {
+    for (BasicBlock &BB : *F) {
+      for (Instruction &I : BB) {
+        if (auto *Call = dyn_cast<CallInst>(&I)) {
+          Function *CalledFunc = Call->getCalledFunction();
+          if (CalledFunc && !CalledFunc->isIntrinsic()) {
+            std::string CalledName = CalledFunc->getName().str();
+            auto It = ClonedFuncs.find(CalledName);
+            if (It != ClonedFuncs.end()) {
+              Call->setCalledFunction(It->second);
             }
           }
         }
+      }
+    }
+  }
+
+  /// Updates calls in module functions.
+  ///
+  /// Updates calls in unoptimised functions:
+  ///  1. Functions with __yk_unopt_ prefix.
+  ///  2. Functions which address is taken.
+  ///
+  /// This ensures all unoptimised functions call unoptimised versions of other
+  /// functions.
+  ///
+  /// @param M The LLVM module containing the functions.
+  /// @param ClonedFuncs Map from original function names to their cloned
+  ///        versions.
+  void updateFunctionCalls(Module &M,
+                           std::map<std::string, Function *> &ClonedFuncs) {
+    // Update calls within cloned functions
+    for (auto &Entry : ClonedFuncs) {
+      Function *ClonedFunc = Entry.second;
+      updateCallsInFunction(ClonedFunc, ClonedFuncs);
+    }
+
+    // Update calls within address-taken functions, since they are
+    // also treated as unoptimised functions that should call unoptimised
+    // versions of other functions
+    for (Function &F : M) {
+      if (F.getMetadata(YK_SWT_MODCLONE_FUNC_ADDR_TAKEN) != nullptr) {
+        updateCallsInFunction(&F, ClonedFuncs);
       }
     }
   }
@@ -161,7 +184,7 @@ struct YkModuleClone : public ModulePass {
       Context.emitError("Failed to clone functions in module");
       return false;
     }
-    updateClonedFunctionCalls(M, *clonedFunctions);
+    updateFunctionCalls(M, *clonedFunctions);
 
     if (verifyModule(M, &errs())) {
       Context.emitError("Module verification failed!");

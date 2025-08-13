@@ -46,8 +46,11 @@ entry:
 }
 
 ; ======================================================================
-; Original functions - should have trace calls
+; Original functions - behavior depends on whether address is taken
 ; ======================================================================
+; - Functions WITHOUT address taken: get dummy trace calls (optimized)
+; - Functions WITH address taken: get real trace calls (unoptimised) and
+;   call unoptimised versions of other functions when available
 ; File header checks
 ; CHECK: source_filename = "ModuleClone.c"
 ; CHECK: target triple = "x86_64-pc-linux-gnu"
@@ -67,12 +70,14 @@ entry:
 ; CHECK: declare dso_local void @yk_mt_shutdown(ptr noundef)
 
 ; Check that func_inc_with_address_taken is present in its original form
+; Since address-taken functions are treated as unoptimised, they should call
+; the unoptimised versions of other functions when available
 ; CHECK-LABEL: define dso_local i32 @func_inc_with_address_taken(i32 %x)
 ; CHECK-NEXT: entry:
 ; CHECK-NEXT: call void @__yk_trace_basicblock({{.*}})
-; CHECK-NEXT: %call = call i32 @inc(i32 %x)
+; CHECK-NEXT: %call = call i32 @__yk_unopt_inc(i32 %x)
 ; CHECK-NEXT: ret i32 %call
-
+  
 ; Check original function: inc
 ; CHECK-LABEL: define dso_local i32 @inc(i32 %x)
 ; CHECK-NEXT: entry:
@@ -103,12 +108,14 @@ entry:
 ; ======================================================================
 ; Functions whose addresses are taken should not be cloned
 ; ======================================================================
-; Functions with their addresses taken should not be cloned.
-; `func_inc_with_address_taken` is used by pointer and thus remains unaltered.
+; Functions with their addresses taken should not be cloned (to avoid updating
+; all function pointer references). However, they are treated as unoptimised
+; and have their internal calls updated to use unoptimised versions.
+; `func_inc_with_address_taken` is used by pointer and thus remains uncloned.
 ; CHECK-NOT: define dso_local i32 @__yk_unopt_func_inc_with_address_taken
 
 ; ======================================================================
-; Cloned functions - should have no trace calls
+; Cloned functions - should have real trace calls and call other unoptimised functions
 ; ======================================================================
 ; Check cloned function: __yk_unopt_inc
 ; CHECK-LABEL: define dso_local i32 @__yk_unopt_inc(i32 %x)
