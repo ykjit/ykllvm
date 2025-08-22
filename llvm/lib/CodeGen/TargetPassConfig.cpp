@@ -53,6 +53,7 @@
 #include "llvm/Transforms/Yk/ControlPoint.h"
 #include "llvm/Transforms/Yk/Idempotent.h"
 #include "llvm/Transforms/Yk/Linkage.h"
+#include "llvm/Transforms/Yk/OutlineUntraceable.h"
 #include "llvm/Transforms/Yk/ShadowStack.h"
 #include "llvm/Transforms/Yk/SplitBlocksAfterCalls.h"
 #include "llvm/Transforms/Yk/Stackmaps.h"
@@ -1184,6 +1185,14 @@ bool TargetPassConfig::addISelPasses() {
     addPass(createYkLinkagePass());
   }
 
+  if (YkOutlineUntraceable) {
+    // FIXME: I think we should be able to run this earlier (before the
+    // YkBlockDisambiguate pass) to benefit from it even more, but it causes
+    // crashes. Also, are there any other Yk passes above that could, but don't
+    // yet, skip functions marked yk_outline? Investigate.
+    addPass(createOutlineUntraceablePass());
+  }
+
   if (YkPatchIdempotent) {
     addPass(createYkIdempotentPass());
   }
@@ -1204,7 +1213,7 @@ bool TargetPassConfig::addISelPasses() {
 
   if (YkBasicBlockTracer) {
     addPass(createYkBasicBlockTracerPass(YkModuleClone));
-  }  
+  }
 
   addISelPrepare();
   return addCoreISelPasses();
