@@ -1213,7 +1213,7 @@ bool TargetPassConfig::addISelPasses() {
 
   if (YkBasicBlockTracer) {
     addPass(createYkBasicBlockTracerPass(YkModuleClone));
-  }  
+  }
 
   addISelPrepare();
   return addCoreISelPasses();
