@@ -4,6 +4,7 @@ add_llvm_component_library(LLVMYkPasses
   Idempotent.cpp
   Linkage.cpp
   LivenessAnalysis.cpp
+  OutlineUntraceable.cpp
   StackMaps.cpp
   ShadowStack.cpp
   NoCallsInEntryBlocks.cpp

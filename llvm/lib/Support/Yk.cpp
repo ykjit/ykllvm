@@ -136,6 +136,19 @@ struct CreateYkPatchIdempotentParser {
 } // namespace
 static ManagedStatic<cl::opt<bool, true>, CreateYkPatchIdempotentParser> YkPatchIdempotentParser;
 
+bool YkOutlineUntraceable;
+namespace {
+struct CreateYkOutlineUntraceableParser {
+  static void *call() {
+    return new cl::opt<bool, true>(
+        "yk-outline-untraceable",
+        cl::desc("Mark functions that could never be traced with `yk_outline`"),
+        cl::NotHidden, cl::location(YkOutlineUntraceable));
+  }
+};
+} // namespace
+static ManagedStatic<cl::opt<bool, true>, CreateYkOutlineUntraceableParser> YkOutlineUntraceableParser;
+
 void llvm::initYkOptions() {
   *YkExtendedLLVMBBAddrMapSectionParser;
   *YkStackMapOffsetFixParser;
@@ -146,4 +159,5 @@ void llvm::initYkOptions() {
   *YkDontOptFuncABIParser;
   *YkPatchCtrlPointParser;
   *YkPatchIdempotentParser;
+  *YkOutlineUntraceableParser;
 }
