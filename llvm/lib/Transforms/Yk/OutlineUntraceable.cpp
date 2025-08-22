@@ -120,12 +120,6 @@ private:
       return false;
     }
 
-    if (F->hasAddressTaken()) {
-      // Address is taken. All bets are off because the function could be
-      // indirectly called from inside (or outside) of the module.
-      return true;
-    }
-
     // We've checked all the easy stuff, now we have to inspect the call graph.
     // If there exists at least one direct-call path from the control point to
     // F, then F may be traced, otherwise it can't.
