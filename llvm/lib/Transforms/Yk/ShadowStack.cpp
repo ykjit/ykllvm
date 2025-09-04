@@ -480,6 +480,35 @@ public:
       }
     }
 
+    // Now scan the module for things like setjmp() that require us to restore
+    // the shadow stack pointer in the event of a longjmp(). We do this even for
+    // functions that themselves don't have shadow stack instrumentation,
+    // because their callees could still mutate the shadow stack pointer.
+    for (Function &F : M) {
+      for (BasicBlock &BB : F) {
+        for (Instruction &I : BB) {
+          if (CallBase *CB = dyn_cast<CallBase>(&I)) {
+            Function *CF = CB->getCalledFunction();
+            if (CF && CF->hasFnAttribute(Attribute::ReturnsTwice)) {
+              IRBuilder<> Builder(&I);
+              // Found one.
+              //
+              // Before the call, load the current shadow stack pointer. We do
+              // a volatile load to ensure this value is restored in the event
+              // of a longjmp.
+              Value *OrigPtr =
+                  Builder.CreateLoad(PointerType::get(M.getContext(), 0),
+                                     ShadowCurrent, /*isVolatile=*/true);
+              // After the call, restore the shadow stack poninter to its
+              // original value.
+              Builder.SetInsertPoint(I.getNextNode());
+              Builder.CreateStore(OrigPtr, ShadowCurrent);
+            }
+          }
+        }
+      }
+    }
+
     // Finalize the DIBuilder after all debug info is created
     if (DIB)
       DIB->finalize();
