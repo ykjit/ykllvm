@@ -1163,6 +1163,10 @@ bool TargetPassConfig::addISelPasses() {
     addPass(createYkNoCallsInEntryBlocksPass());
   }
 
+  if (YkOutlineUntraceable) {
+    addPass(createOutlineUntraceablePass());
+  }
+
   if (YkShadowStackOpt) {
     addPass(createYkShadowStackPass(numberOfControlPoints));
   }
@@ -1183,14 +1187,6 @@ bool TargetPassConfig::addISelPasses() {
 
   if (YkLinkage) {
     addPass(createYkLinkagePass());
-  }
-
-  if (YkOutlineUntraceable) {
-    // FIXME: I think we should be able to run this earlier (before the
-    // YkBlockDisambiguate pass) to benefit from it even more, but it causes
-    // crashes. Also, are there any other Yk passes above that could, but don't
-    // yet, skip functions marked yk_outline? Investigate.
-    addPass(createOutlineUntraceablePass());
   }
 
   if (YkPatchIdempotent) {
