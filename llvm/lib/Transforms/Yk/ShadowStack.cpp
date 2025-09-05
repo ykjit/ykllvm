@@ -159,7 +159,8 @@ public:
   // Insert a shadowstack_ptr debug variable when compiled with '-g' so that in
   // gdb we can know the offset into the shadow stack for each frame. This uses
   // llvm's debug intrinsic so does not affect optimized code.
-  void insertShadowDbgInfo(Function &F, DataLayout &DL, size_t SFrameSize) {
+  void insertShadowDbgInfo(Function &F, DataLayout &DL, size_t SFrameSize,
+                           Value *SSPtr) {
     DISubprogram *SP = F.getSubprogram();
     if (!SP) {
       return;
@@ -176,17 +177,10 @@ public:
         false, // AlwaysPreserve
         DINode::DIFlags::FlagArtificial);
 
-    // And insert it at the beginning of the function
+    // And insert it after the load of the shadow stack pointer.
     DILocation *DIL = DILocation::get(F.getContext(), SP->getLine(), 0, SP);
-    Instruction *InsertBefore = &*F.getEntryBlock().getFirstInsertionPt();
-    Instruction *First = F.getEntryBlock().getFirstNonPHI();
-    IRBuilder<> Builder(First);
-
-    // Load the shadow stack pointer out of the global variable and assign it
-    // to our debug local.
-    Value *SSPtr = Builder.CreateLoad(Int8PtrTy, ShadowCurrent);
     DIB->insertDbgValueIntrinsic(SSPtr, DebugVar, DIB->createExpression(), DIL,
-                                 InsertBefore);
+                                 cast<LoadInst>(SSPtr)->getNextNode());
   }
 
   // Insert main's prologue.
@@ -474,7 +468,7 @@ public:
       size_t SFrameSize = analyseFunction(F, DL, Allocas, Rets);
       if (SFrameSize > 0) {
         Value *InitSSPtr = insertShadowPrologue(F, SFrameSize);
-        insertShadowDbgInfo(F, DL, SFrameSize);
+        insertShadowDbgInfo(F, DL, SFrameSize, InitSSPtr);
         rewriteAllocas(DL, Allocas, InitSSPtr);
         insertShadowEpilogues(Rets, InitSSPtr);
       }
