@@ -1,39 +1,43 @@
 //===- ModuleClone.cpp - Yk Module Cloning Pass ---------------------------===//
 //
-// This pass duplicates functions within the module, producing both the
-// original (optimised) and cloned (unoptimised) versions of these
-// functions. The process is as follows:
+// This pass duplicates functions within the module, producing both optimised
+// and unoptimised versions of these functions. The process creates two separate
+// call paths that can be dynamically switched over based on the jit tracing
+// mode.
 //
-// - **Cloning Criteria:**
-//   - Functions **without** their address taken are cloned. This results in two
-//     versions of such functions in the module: the original and the cloned
-//     version.
+// - **Cloning Strategy:**
+//   All module functions are cloned into two versions. The handling differs
+//   based on whether the function's address is taken:
 //
-//   - Functions **with** their address taken remain only in their original form
-//     and are not cloned. These functions are not cloned because then we would
-//     need to update their references in the callers to point to the newly
-//     cloned function. Since function pointers can be stored in variables,
-//     passed as arguments, etc. tracking and updating all these references is
-//     feasible but complex.
+//   - **Functions WITHOUT address taken:**
+//     - Original function → marked as **optimised** (YK_SWT_OPT_MD metadata)
+//     - Clone function → prefixed with `__yk_unopt_` and marked as
+//     **unoptimised** (YK_SWT_UNOPT_MD metadata)
 //
-// - **Cloned Function Naming:**
-//   - The cloned functions are renamed by adding the prefix `__yk_unopt_` to
-//     their original names. This distinguishes them from the original
-//     functions.
+//   - **Functions WITH address taken:**
+//     - Original function → marked as **unoptimised** (YK_SWT_UNOPT_MD
+//     metadata)
+//     - Clone function → prefixed with `__yk_opt_` and marked as **optimised**
+//     (YK_SWT_OPT_MD metadata)
 //
 // - **Optimisation Intent:**
-//   - The **cloned functions** (those with the `__yk_unopt_` prefix) are
-//     intended to be the **unoptimised versions** of the functions. These
-//     functions will have the real __yk_trace_basicblock tracing calls.
+//   - **Unoptimised functions** are intended for tracing mode and will have
+//     real `__yk_trace_basicblock` tracing calls that collect execution data.
 //
-//   - The **original functions** remain **optimised**. These functions are
-//     used when JIT is not tracing. These functions will have the dummy
-//     __yk_trace_basicblock_dummy tracing calls that do nothing.
+//   - **Optimised functions** are intended for non-tracing mode and will have
+//     dummy `__yk_trace_basicblock_dummy` calls that do nothing.
 //
-//   - Since __yk_trace_basicblock_dummy calls are much cheaper than
-//     real __yk_trace_basicblock calls, dynamic transition between these
-//     versions reduces the overhead of the SWT tracing.
+//   - Since dummy tracing calls are much cheaper than real tracing calls,
+//     dynamic switching between these versions reduces the overhead when
+//     tracing is not active.
 //
+// - **Call Graph Consistency:**
+//   Optimised functions only call other optimised functions, unless the call is
+//   indirect in which case it calls the unoptimised version.
+//   Unoptimised functions only call other unoptimised functions.
+//
+//  Transformation examples can be seen in
+//  llvm/test/Transforms/Yk/ModuleClone.ll
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Yk/ModuleClone.h"
@@ -67,14 +71,12 @@ struct YkModuleClone : public ModulePass {
     initializeYkModuleClonePass(*PassRegistry::getPassRegistry());
   }
 
-  /// Clones eligible functions within the given module.
+  /// Clones all eligible functions within the given module.
   ///
-  /// This function iterates over all functions in the provided LLVM module `M`
-  /// and clones those that meet the following criteria:
-  ///
-  /// - The function does **not** have external linkage and is **not** a
-  /// declaration.
-  /// - The function's address is **not** taken.
+  /// For each eligible function, both address-taken and non-address-taken
+  /// functions are cloned, but they are handled differently:
+  /// - Non-address-taken: original stays optimised, clone becomes unoptimised
+  /// - Address-taken: original becomes unoptimised, clone becomes optimised
   ///
   /// @param M The LLVM module containing the functions to be cloned.
   /// @return A map where the keys are the original function names and the
@@ -89,17 +91,10 @@ struct YkModuleClone : public ModulePass {
       if (F.hasExternalLinkage() && F.isDeclaration()) {
         continue;
       }
-
-      // Function with address taken are not cloned.
-      // Add metadata to the function to indicate that it has address taken.
-      // This metadata is used in other passes like `BasicBlockTracer`.
-      if (F.hasAddressTaken()) {
-        MDNode *MD = MDNode::get(Context, MDString::get(Context, "true"));
-        F.setMetadata(YK_SWT_MODCLONE_FUNC_ADDR_TAKEN, MD);
-        continue;
-      }
-      // Skip already cloned functions or functions with address taken.
-      if (F.getName().startswith(YK_SWT_UNOPT_PREFIX)) {
+      MDNode *MD = MDNode::get(Context, MDString::get(Context, "true"));
+      // Skip already cloned functions.
+      if (F.getMetadata(YK_SWT_OPT_MD) != nullptr ||
+          F.getMetadata(YK_SWT_UNOPT_MD) != nullptr) {
         continue;
       }
       ValueToValueMapTy VMap;
@@ -114,32 +109,60 @@ struct YkModuleClone : public ModulePass {
         DestArgIt->setName(OrigArg.getName());
         VMap[&OrigArg] = &*DestArgIt++;
       }
-      // Rename function
+      // Handle cloning based on whether the function's address is taken.
       auto originalName = F.getName().str();
-      auto cloneName = Twine(YK_SWT_UNOPT_PREFIX) + originalName;
-      ClonedFunc->setName(cloneName);
-      ClonedFuncs[originalName] = ClonedFunc;
+      if (F.hasAddressTaken()) {
+        F.setMetadata(YK_SWT_UNOPT_MD, MD); // Mark original as unoptimised
+        auto cloneName = Twine(YK_SWT_OPT_PREFIX) + originalName;
+        ClonedFunc->setName(cloneName);
+        ClonedFuncs[originalName] = ClonedFunc;
+        ClonedFunc->setMetadata(YK_SWT_OPT_MD, MD); // Mark clone as optimised
+      } else {
+        F.setMetadata(YK_SWT_OPT_MD, MD); // Mark original as optimised
+        auto cloneName = Twine(YK_SWT_UNOPT_PREFIX) + originalName;
+        ClonedFunc->setName(cloneName);
+        ClonedFuncs[originalName] = ClonedFunc;
+        ClonedFunc->setMetadata(YK_SWT_UNOPT_MD,
+                                MD); // Mark clone as unoptimised
+      }
     }
     return ClonedFuncs;
   }
 
-  /// Replace all function calls within function `F` with calls to unoptimised
-  /// functions, if such a function exists.
+  /// Updates direct function calls within function `F` to maintain call graph
+  /// consistency between optimised and unoptimised versions.
+  /// This ensures that optimised functions only call other optimised functions,
+  /// and unoptimised functions only call other unoptimised functions.
   ///
   /// @param F The function whose calls should be updated.
-  /// @param ClonedFuncs Map from original function names to their cloned
+  /// @param OriginalFuncNameToClonedFuncMap Map from original function names to
+  /// their cloned
   ///        versions.
-  void updateCallsInFunction(Function *F,
-                             std::map<std::string, Function *> &ClonedFuncs) {
+  void updateCallsInFunction(
+      Function *F,
+      std::map<std::string, Function *> &OriginalFuncNameToClonedFuncMap) {
     for (BasicBlock &BB : *F) {
       for (Instruction &I : BB) {
         if (auto *Call = dyn_cast<CallInst>(&I)) {
           Function *CalledFunc = Call->getCalledFunction();
+          // Update only direct calls.
           if (CalledFunc && !CalledFunc->isIntrinsic()) {
             std::string CalledName = CalledFunc->getName().str();
-            auto It = ClonedFuncs.find(CalledName);
-            if (It != ClonedFuncs.end()) {
-              Call->setCalledFunction(It->second);
+            auto Clone = OriginalFuncNameToClonedFuncMap.find(CalledName);
+            if (Clone != OriginalFuncNameToClonedFuncMap.end()) {
+              auto clonedFunc = Clone->second;
+              // If this function is unoptimised and there's an unoptimised
+              // version of the callee, use it
+              if (F->getMetadata(YK_SWT_UNOPT_MD) != nullptr &&
+                  clonedFunc->getMetadata(YK_SWT_UNOPT_MD) != nullptr) {
+                Call->setCalledFunction(clonedFunc);
+              }
+              // If this function is optimised and there's an optimised version
+              // of the callee, use it
+              if (F->getMetadata(YK_SWT_OPT_MD) != nullptr &&
+                  clonedFunc->getMetadata(YK_SWT_OPT_MD) != nullptr) {
+                Call->setCalledFunction(clonedFunc);
+              }
             }
           }
         }
@@ -147,44 +170,17 @@ struct YkModuleClone : public ModulePass {
     }
   }
 
-  /// Updates calls in module functions.
-  ///
-  /// Updates calls in unoptimised functions:
-  ///  1. Functions with __yk_unopt_ prefix.
-  ///  2. Functions which address is taken.
-  ///
-  /// This ensures all unoptimised functions call unoptimised versions of other
-  /// functions.
-  ///
-  /// @param M The LLVM module containing the functions.
-  /// @param ClonedFuncs Map from original function names to their cloned
-  ///        versions.
-  void updateFunctionCalls(Module &M,
-                           std::map<std::string, Function *> &ClonedFuncs) {
-    // Update calls within cloned functions
-    for (auto &Entry : ClonedFuncs) {
-      Function *ClonedFunc = Entry.second;
-      updateCallsInFunction(ClonedFunc, ClonedFuncs);
-    }
-
-    // Update calls within address-taken functions, since they are
-    // also treated as unoptimised functions that should call unoptimised
-    // versions of other functions
-    for (Function &F : M) {
-      if (F.getMetadata(YK_SWT_MODCLONE_FUNC_ADDR_TAKEN) != nullptr) {
-        updateCallsInFunction(&F, ClonedFuncs);
-      }
-    }
-  }
-
   bool runOnModule(Module &M) override {
     LLVMContext &Context = M.getContext();
-    auto clonedFunctions = cloneFunctionsInModule(M);
-    if (!clonedFunctions) {
+    auto OriginalFuncNameToClonedFuncMap = cloneFunctionsInModule(M);
+    if (!OriginalFuncNameToClonedFuncMap) {
       Context.emitError("Failed to clone functions in module");
       return false;
     }
-    updateFunctionCalls(M, *clonedFunctions);
+    // Update function calls in all module functions.
+    for (Function &F : M) {
+      updateCallsInFunction(&F, *OriginalFuncNameToClonedFuncMap);
+    }
 
     if (verifyModule(M, &errs())) {
       Context.emitError("Module verification failed!");

@@ -62,22 +62,12 @@ struct YkBasicBlockTracer : public ModulePass {
         builder.SetInsertPoint(&*BB.getFirstInsertionPt());
 
         if (ModuleClone) {
-          bool isUnopt = F.getName().startswith(YK_SWT_UNOPT_PREFIX);
-          bool isAddrTaken =
-              F.getMetadata(YK_SWT_MODCLONE_FUNC_ADDR_TAKEN) != nullptr;
-
-          if (isAddrTaken || isUnopt) {
-            // Address-taken functions and unoptimised functions need real trace
-            // calls that actually record execution.
-            // 1. Address-taken functions are not cloned in ModuleClone
-            //    pass but still have tracing calls inserted. There is only one
-            //    version for these functions: unopt (note that even though
-            //    these functions are unopt they do not have the unopt prefix).
-            // 2. Unoptimised functions (with __yk_unopt_ prefix) are the
-            //    cloned versions created by module cloning.
+          if (F.getMetadata(YK_SWT_UNOPT_MD) != nullptr) {
+            // Unoptimised functions need real trace calls that actually record execution.
             builder.CreateCall(TraceFunc, {builder.getInt32(FunctionIndex),
                                            builder.getInt32(BlockIndex)});
-          } else {
+          } 
+          if (F.getMetadata(YK_SWT_OPT_MD) != nullptr) {
             // Optimised functions (without __yk_unopt_ prefix and not
             // address-taken) get dummy trace calls because we don't execute
             // them during tracing.
