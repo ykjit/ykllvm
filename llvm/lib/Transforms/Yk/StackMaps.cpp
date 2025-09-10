@@ -78,16 +78,24 @@ public:
             // can't tell if an indirect call is an intrinsic at compile time,
             // emit a stackmap in those cases too.
 
+            Function *CF = nullptr;
             if (!CI.isIndirectCall()) {
-              if (CI.getCalledFunction()->isIntrinsic()) {
+              if (auto *alias = dyn_cast<GlobalAlias>(CI.getCalledOperand())) {
+                CF = dyn_cast<Function>(alias->getAliaseeObject());
+              } else {
+                CF = dyn_cast<Function>(
+                    CI.getCalledOperand()->stripPointerCasts());
+              }
+              assert(CF && "Could not retrieve called function.");
+
+              if (CF->isIntrinsic()) {
                 // This also skips the control point which is called via a
                 // patchpoint intrinsic, which already emits a stackmap.
                 continue;
               }
 
-              if (CI.getCalledFunction()->isDeclaration() &&
-                  !CI.getCalledFunction()->getName().startswith(
-                      "__yk_promote")) {
+              if (CF->isDeclaration() &&
+                  !CF->getName().startswith("__yk_promote")) {
                 continue;
               }
             }
@@ -97,9 +105,7 @@ public:
             // include the value computed by `I` itself (since that doesn't
             // exist at the time of the call).
             SMCalls.push_back({&I, LA.getLiveVarsBefore(&I)});
-
-            if (!CI.isIndirectCall() &&
-                CI.getCalledFunction()->getName().startswith("__yk_promote")) {
+            if (CF && CF->getName().startswith("__yk_promote")) {
               // If it's a call to yk_promote* then the return value of the
               // promotion needs to be tracked too. This is because the trace
               // builder will recognise calls to yk_promote specially and

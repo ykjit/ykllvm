@@ -81,6 +81,7 @@ enum OpCode {
   OpCodeFNeg,
   OpCodeDebugStr,
   OpCodePromoteIdempotent,
+  OpCodeExtractValue,
   OpCodeUnimplemented = 255, // YKFIXME: Will eventually be deleted.
 };
 
@@ -752,6 +753,9 @@ private:
           // `nonull` too) into the AOT IR so that it can be used by the JIT.
           continue;
         }
+        if (Attr.getKindAsEnum() == Attribute::ZExt) {
+          continue;
+        }
 
         serialiseUnimplementedInstruction(
             I, FLCtxt, BBIdx, InstIdx,
@@ -767,6 +771,16 @@ private:
       }
       // `noalias` is an optimisation hint we can ignore.
       if (Attr.getKindAsEnum() == Attribute::NoAlias) {
+        continue;
+      }
+      if (Attr.getKindAsEnum() == Attribute::ZExt) {
+        continue;
+      }
+      if (Attr.getKindAsEnum() == Attribute::NonNull) {
+        continue;
+      }
+      if (Attr.getKindAsEnum() == Attribute::Alignment) {
+        // FIXME: We need to pass this through to our codegen.
         continue;
       }
       serialiseUnimplementedInstruction(
@@ -846,50 +860,42 @@ private:
       serialiseIndirectCallInst(I, FLCtxt, BBIdx, InstIdx);
       return;
     }
+    auto *CF = dyn_cast_or_null<Function>(I->getCalledOperand());
+    // Since this isn't an indirect call we know the call operand must be a
+    // valid function. If not something has gone wrong here.
+    if (!CF) {
+      // In ykruby some function calls have no valid function here though it is
+      // not entirely clear to me why that happens. Let's ignore them for now.
+      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx,
+                                        optional("called func is null"));
+      return;
+    }
 
     // Stackmap calls are serialised on-demand by folding them into the `call`
     // or `condbr` instruction which they belong to.
-    if (I->getCalledFunction()->isIntrinsic() &&
-        I->getIntrinsicID() == Intrinsic::experimental_stackmap) {
+    if (I->getIntrinsicID() == Intrinsic::experimental_stackmap) {
       return;
     }
 
     // Calls to functions that promote runtime values are given their own
     // bytecodes so that they can more be easily identified.
-    if (I->getCalledFunction()->getName().startswith(YK_PROMOTE_PREFIX)) {
+    if (CF->getName().startswith(YK_PROMOTE_PREFIX)) {
       serialisePromotion(I, FLCtxt, InstIdx);
       return;
     }
-    if (I->getCalledFunction()->getName().startswith(
-            YK_IDEMPOTENT_RECORDER_PREFIX)) {
+    if (CF->getName().startswith(YK_IDEMPOTENT_RECORDER_PREFIX)) {
       serialiseIdempotentPromotion(I, FLCtxt, InstIdx);
       return;
     }
 
-    if (I->getCalledFunction()->getName() == YK_DEBUG_STR) {
+    if (CF->getName() == YK_DEBUG_STR) {
       serialiseDebugStr(I, FLCtxt, InstIdx);
       return;
     }
 
-    // FIXME: Note that this assertion can fail if you do a direct call without
-    // the correct type annotation at the call site.
-    //
-    // e.g. for a functiion:
-    //
-    //   define i32 @f(i32, ...)
-    //
-    // if you do:
-    //
-    //   call i32 @f(1i32, 2i32);
-    //
-    // instead of:
-    //
-    //   call i32 (i32, ...) @f(1i32, 2i32);
-    assert(I->getCalledFunction());
-
     serialiseOpcode(OpCodeCall);
     // callee:
-    OutStreamer.emitSizeT(functionIndex(I->getCalledFunction()));
+    OutStreamer.emitSizeT(functionIndex(CF));
     // num_args:
     // (this includes static and varargs arguments)
     OutStreamer.emitInt32(I->arg_size());
@@ -897,8 +903,8 @@ private:
     for (unsigned OI = 0; OI < I->arg_size(); OI++) {
       serialiseOperand(I, FLCtxt, I->getOperand(OI));
     }
-    bool IsCtrlPointCall = I->getCalledFunction()->getName() == CP_PPNAME;
-    if (!I->getCalledFunction()->isDeclaration() || IsCtrlPointCall) {
+    bool IsCtrlPointCall = CF->getName() == CP_PPNAME;
+    if (!CF->isDeclaration() || IsCtrlPointCall) {
       // The next instruction will be the stackmap entry
       // has_safepoint = 1:
       OutStreamer.emitInt8(1);
@@ -970,7 +976,7 @@ private:
   void serialiseLoadInst(LoadInst *I, FuncLowerCtxt &FLCtxt, unsigned BBIdx,
                          unsigned &InstIdx) {
     // We don't yet support:
-    //  - atomic loads
+    //  - some atomic loads
     //  - loads from exotic address spaces
     //  - potentially misaligned loads
     //
@@ -980,19 +986,42 @@ private:
     // operation into multiple loads (in order to avoid a memory access
     // straddling an alignment boundary on a CPU that disallows such things).
     //
-    // For now we let through only loads with an alignment greater-than or
-    // equal-to the size of the type of the data being loaded. Such cases are
-    // trivially safe, since the codegen will never have to face an unaligned
-    // load for these.
-    //
-    // Eventually we will have to encode the alignment of the load into our IR
-    // and have the trace code generator split up the loads where necessary.
-    // The same will have to be done for store instructions.
-    if ((I->getOrdering() != AtomicOrdering::NotAtomic) ||
-        (I->getPointerAddressSpace() != 0) ||
-        (I->getAlign() < DL.getTypeAllocSize(I->getType()))) {
+    // The serialiser currently just ignores the aligments, which on x86 isn't
+    // a problem. However, eventually we will have to encode the alignment of
+    // the load into our IR and have the trace code generator split up the
+    // loads where necessary. The same will have to be done for store
+    // instructions.
+
+    // FIXME: Since we are only targeting x86 for now we can ignore the
+    // alignment of an atomic if doesn't straddle a word boundary. For other
+    // architectures or alignments we need to pass the alignment and whether or
+    // not this is an atomic through to the codegen so it can be handled there
+    // correctly.
+    if ((I->getOrdering() != AtomicOrdering::NotAtomic) &&
+        (DL.getTypeAllocSize(I->getType()) + (I->getAlign().value() % 8) > 8)) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
       return;
+    }
+    if (I->getPointerAddressSpace() != 0) {
+      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
+      return;
+    }
+
+    // Rewrite getelementptr operands into GetElementPtrInst's.
+    if (llvm::GEPOperator *GEP =
+            llvm::dyn_cast<llvm::GEPOperator>(I->getPointerOperand())) {
+      if (!isa<GetElementPtrInst>(GEP)) {
+        std::vector<Value *> Indices;
+        for (Value *V : GEP->indices()) {
+          Indices.push_back(V);
+        }
+        GetElementPtrInst *G = nullptr;
+        G = GetElementPtrInst::Create(GEP->getSourceElementType(),
+                                      GEP->getPointerOperand(), Indices);
+        G->insertBefore(I);
+        I->setOperand(0, G);
+        serialiseGetElementPtrInst(G, FLCtxt, BBIdx, InstIdx);
+      }
     }
 
     // opcode:
@@ -1489,6 +1518,26 @@ private:
     }
   }
 
+  void serialiseExtractValueInst(ExtractValueInst *I, FuncLowerCtxt &FLCtxt,
+                                 unsigned BBIdx, unsigned &InstIdx) {
+
+    // opcode:
+    serialiseOpcode(OpCodeExtractValue);
+    // type_idx:
+    OutStreamer.emitSizeT(typeIndex(I->getType()));
+    // operand:
+    serialiseOperand(I, FLCtxt, I->getAggregateOperand());
+    // num_indices:
+    OutStreamer.emitSizeT(I->getNumIndices());
+    // indices:
+    for (unsigned Idx : I->getIndices()) {
+      OutStreamer.emitSizeT(Idx);
+    }
+
+    FLCtxt.updateVLMap(I, InstIdx);
+    InstIdx++;
+  }
+
   size_t getPathIndex(string Path) {
     vector<string>::iterator It = std::find(Paths.begin(), Paths.end(), Path);
     if (It != Paths.end()) {
@@ -1572,6 +1621,7 @@ private:
     INST_SERIALISE(I, SwitchInst, serialiseSwitchInst);
     INST_SERIALISE(I, SelectInst, serialiseSelectInst);
     INST_SERIALISE(I, UnaryOperator, serialiseUnaryOperatorInst);
+    INST_SERIALISE(I, ExtractValueInst, serialiseExtractValueInst);
 
     // INST_SERIALISE does an early return upon a match, so if we get here then
     // the instruction wasn't handled.
@@ -1768,6 +1818,8 @@ private:
     serialiseTypeKind(TypeKindStruct);
     unsigned NumFields = STy->getNumElements();
     const StructLayout *SL = DL.getStructLayout(STy);
+    // bit_size:
+    OutStreamer.emitInt64(DL.getTypeAllocSizeInBits(STy));
     // num_fields:
     OutStreamer.emitSizeT(NumFields);
     // field_tys:
