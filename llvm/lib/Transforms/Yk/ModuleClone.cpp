@@ -77,11 +77,6 @@ struct YkModuleClone : public ModulePass {
     if (containsControlPoint(F)) {
       return false;
     }
-    // Until we can yk_outline optimised clones, we can't clone functions
-    // containing promotions or debug strings.
-    if (containsPromotionsOrDebugStrings(&F)) {
-      return false;
-    }
     return true;
   }
 
@@ -116,6 +111,9 @@ struct YkModuleClone : public ModulePass {
           DestArgIt->setName(OrigArg.getName());
           VMap[&OrigArg] = &*DestArgIt++;
         }
+        // Promotions and calls to yk_debug_str are not required for optimised
+        // clones and would only slow us down.
+        removePromotionsAndDebugStrings(ClonedOptFunc);
         // The cloned function will be the optimised one.
         Twine OptName = Twine(YK_SWT_OPT_PREFIX) + OrigName;
         ClonedOptFunc->setName(OptName);
@@ -127,19 +125,41 @@ struct YkModuleClone : public ModulePass {
     return CloneMap;
   }
 
-  bool containsPromotionsOrDebugStrings(Function *F) {
+  void removePromotion(CallBase *CB) {
+    CallInst *CI = cast<CallInst>(CB);
+    assert(CI->arg_size() == 1);
+    Value *Arg = CI->getArgOperand(0);
+    assert(CI->getType() == Arg->getType());
+    CI->replaceAllUsesWith(Arg);
+    CI->eraseFromParent();
+  }
+
+  void removePromotionsAndDebugStrings(Function *F) {
+    // We have to do this in two phases to avoid iterator invalidation.
+    //
+    // 1. Find instructions to remove.
+    std::vector<CallInst *> Promotions;
+    std::vector<CallInst *> DebugStrs;
     for (BasicBlock &BB : *F) {
       for (Instruction &I : BB) {
-        if (CallBase *CI = dyn_cast<CallBase>(&I)) {
-          Function *CF = CI->getCalledFunction();
-          if (CF && (CF->getName().startswith(YK_PROMOTE_PREFIX) ||
-                     (CF->getName() == YK_DEBUG_STR))) {
-            return true;
+        if (CallBase *CB = dyn_cast<CallBase>(&I)) {
+          if (Function *CF = CB->getCalledFunction()) {
+            if (CF->getName().startswith(YK_PROMOTE_PREFIX)) {
+              Promotions.push_back(cast<CallInst>(CB));
+            } else if (CF->getName() == YK_DEBUG_STR) {
+              DebugStrs.push_back(cast<CallInst>(CB));
+            }
           }
         }
       }
     }
-    return false;
+    // 2. Remove instructions.
+    for (CallInst *P : Promotions) {
+      removePromotion(P);
+    }
+    for (CallInst *D : DebugStrs) {
+      D->eraseFromParent();
+    }
   }
 
   /// Updates direct calls in optimised clones so that they call optimised
