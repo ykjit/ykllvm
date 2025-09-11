@@ -53,9 +53,6 @@ public:
   string &what() { return S; }
 };
 
-#define YK_PROMOTE_PREFIX "__yk_promote"
-#define YK_DEBUG_STR "yk_debug_str"
-
 const char *SectionName = ".yk_ir";
 const uint32_t Magic = 0xedd5f00d;
 const uint32_t Version = 0;

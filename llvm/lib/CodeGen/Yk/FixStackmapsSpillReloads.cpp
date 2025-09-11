@@ -34,6 +34,116 @@
 // inbetween a call and stackmap, replaces the stackmap operands with the
 // spill reloads, and then moves the stackmap instruction up just below the
 // call.
+//
+// The following gives an overview of the cases this pass handles.
+//
+// ## The easy cases
+//
+// ### Copy
+//
+// ```
+// call foo
+// $rbx = $rax
+// STACKMAP $rbx
+// ```
+//
+// A simple spill reload via another register. Move the instruction after the
+// STACKMAP and replace the `$rbx` operand in the stackmap with `$rax`:
+//
+// ```
+// call foo
+// STACKMAP $rax
+// $rbx = $rax
+// ```
+//
+// [From here on we omit the `call foo` to simplify the examples.]
+//
+// ### Load from stack
+//
+// ```
+// $rbx = load $rbp-8
+// STACKMAP $rbx
+// ```
+//
+// A simple spill reload from the stack. Replace `$rbx` in the stackmap with
+// `$rbp-8`:
+//
+// ```
+// STACKMAP $rbp-8
+// $rbx = load $rbp-8
+// ```
+//
+// ### Remove invalid implicit kills
+//
+// ```
+// $rbx = $rax
+// STACKMAP $rbx, implicit killed $rax
+// ```
+//
+// The stackmap contains an implicitly killed register. But when we move the
+// instruction, this `implicit killed` becomes invalid. Remove the `implicit
+// killed $rax` as `$rax` is now live:
+//
+// ```
+// STACKMAP $rax
+// $rbx = $rax
+// ```
+//
+// ### Adjust killed flags
+//
+// ```
+// mov rax, killed rcx
+// STACKMAP rax
+// ```
+//
+// When replacing STACKMAP operands, make sure we don't copy over `killed`
+// flags that are now no longer valid. We should not replace `$rax` with
+// `killed $rcx`, but instead with `$rcx`. In short, remove all kill flags of
+// all register operands we add to the stackmap.
+//
+// ```
+// STACKMAP rcx
+// mov rax, killed rcx
+// ```
+//
+// ### Other defines that are not spill reloads
+//
+// ```
+// rcx = lea $rbp-8
+// STACKMAP killed rcx
+// ```
+//
+// Some tracked registers do no longer need to be tracked after moving around
+// instructions. In this case, `$rcx` was "reloaded" via a `lea` instruction.
+// Moving the `lea` instruction below the STACKMAP means we always compute the
+// correct value of `$rcx` after deopt so we no longer need to track `$rcx`. We
+// can't just remove it from the STACKMAP as that will mess with the live
+// variable ordering. Instead, we replace it with a constant `0xdead` (57005)
+// so we can easily recognise it when things go wrong.
+//
+// ```
+// STACKMAP 0xdead
+// rcx = lea $rbp-8
+// ```
+//
+// ### Stack reload that isn't a spill reload
+//
+// ```
+// mov rax, rbp + 10
+// STACKMAP rax
+// ```
+//
+// This instruction looks like a spill reload, but actually isn't one. In this
+// example, we are loading a value from the previous stack frame, likely an
+// argument passed into this function via the stack. We don't need to track
+// this and can also replace it with a constant. We can check if this is a real
+// spill using `MI->getRestoreSize`, which returns an `std::optional`. No
+// result means this isn't a real spill reload.
+//
+// ```
+// STACKMAP 0xdead
+// mov rax, rbp + 10
+// ```
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/LivePhysRegs.h"
@@ -110,12 +220,10 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
             MI.getOpcode() != TargetOpcode::PATCHPOINT) {
           MachineOperand Op = MI.getOperand(0);
           if (Op.isGlobal() &&
-              (Op.getGlobal()->getGlobalIdentifier() == YK_TRACE_FUNCTION ||
-               Op.getGlobal()->getGlobalIdentifier() ==
-                   YK_TRACE_FUNCTION_DUMMY)) {
-            // `YK_TRACE_FUNCTION` and `YK_TRACE_FUNCTION_DUMMY` calls don't
-            // require stackmaps so we don't need to adjust anything here. In
-            // fact, doing so will skew any stackmap that follows.
+              Op.getGlobal()->getGlobalIdentifier() == YK_TRACE_FUNCTION) {
+            // `YK_TRACE_FUNCTION` calls don't require stackmaps so we don't
+            // need to adjust anything here. In fact, doing so will skew any
+            // stackmap that follows.
             continue;
           }
           // If we see a normal function call we know it will be followed by a
@@ -154,19 +262,29 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
             unsigned int Reg = getDwarfRegNum(MOI->getReg(), TRI);
             // Check if the register operand in the stackmap is a restored
             // spill.
-            // Since implicit operands are ignored by stackmaps (they are not
-            // added into the record) we must not replace them with spills so
-            // we don't add extra locations that aren't needed. Doing so leads
-            // to bugs during deoptimisation.
-            if (Spills.count(Reg) > 0 && !MOI->isImplicit()) {
-              // Get spill reload instruction
+            if (MOI->isImplicit()) {
+              if (MOI->isKill()) {
+                // implicit kills are not required.
+                MOI++;
+                continue;
+              }
+              // Leave other implicits (e.g. defs) as is.
+              // FIXME: Should we replace implicit defs using the `Spills` map?
+              MIB.add(*MOI);
+            } else if (Spills.count(Reg) == 0) {
+              // A tracked register not related to spills. Leave as is.
+              MIB.add(*MOI);
+            } else {
+              // This register is related to a spill.
               MachineInstr *SMI = Spills[Reg];
               int FI;
               if (TII->isCopyInstr(*SMI)) {
                 // If the reload is a simple copy, e.g. $rax = $rbx,
                 // just replace the stackmap operand with the source of the
                 // copy instruction.
-                MIB.add(SMI->getOperand(1));
+                MachineOperand &Op = SMI->getOperand(1);
+                Op.setIsKill(false);
+                MIB.add(Op);
               } else if (TII->isLoadFromStackSlotPostFE(*SMI, FI)) {
                 // If the reload is a load from the stack, replace the operand
                 // with multiple operands describing a stack location.
@@ -198,10 +316,14 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
                   MIB.add(SMI->getOperand(4)); // Offset
                 }
               } else {
-                assert(false && "Unknown instruction found");
+                // This tracked operand maps to an instruction that isn't a
+                // spill, e.g. `$rax = lea $rbp-8`. We can't determine another
+                // source so instead we insert a constant and hope that the
+                // instruction has no dependencies and thus will correctly
+                // recover the value after deopt.
+                MIB.addImm(StackMaps::ConstantOp);
+                MIB.addImm(0xdead);
               }
-            } else {
-              MIB.add(*MOI);
             }
             MOI++;
             continue;
@@ -256,10 +378,13 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
       // Collect spill reloads that appear between a call and its corresponding
       // STACKMAP instruction.
       if (Collect) {
-        int FI;
-        if (TII->isCopyInstr(MI) || TII->isLoadFromStackSlotPostFE(MI, FI)) {
-          // FIXME: Can there be multiple spill reloads here? Then this would
-          // need to be a loop.
+        for (MachineOperand &Op : MI.defs()) {
+          // Collect each defined register and map it to its source
+          // instruction.
+          unsigned int Reg = getDwarfRegNum(Op.getReg(), TRI);
+          Spills[Reg] = &MI;
+        }
+        if (TII->isCopyInstr(MI)) {
           unsigned int Op0 = getDwarfRegNum(MI.getOperand(0).getReg(), TRI);
           unsigned int Op1 = getDwarfRegNum(MI.getOperand(1).getReg(), TRI);
           if (TII->isCopyInstr(MI) && Spills.count(Op1)) {
@@ -267,8 +392,6 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
             // So we need to lookup the spill for the source and apply this
             // instead.
             Spills[Op0] = Spills[Op1];
-          } else {
-            Spills[Op0] = &MI;
           }
         }
       }
@@ -278,25 +401,9 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
       E->eraseFromParent();
     }
     if (Erased.size() > 0) {
-      // Did we move any stackmaps around? If so, recompute register liveness
-      // which we may have messed up.
+      // We have made changes so we need to recompute register liveness which
+      // may no longer be accurate.
       recomputeLivenessFlags(MBB);
-    }
-
-    // Remove any implicit kills that are no longer valid.
-    for (MachineInstr *MI : NewInstrs) {
-      // Iterate backwards as we are removing operands as we go along.
-      MachineInstr::mop_iterator Imp = MI->implicit_operands().end();
-      MachineInstr::mop_iterator ImpEnd = MI->implicit_operands().begin();
-      for (; Imp != ImpEnd;) {
-        Imp--;
-        if (Imp->isReg() && Imp->isKill()) {
-          if (MBB.computeRegisterLiveness(TRI, Imp->getReg(), MI) ==
-              MachineBasicBlock::LivenessQueryResult::LQR_Live) {
-            MI->removeOperand(MI->getOperandNo(Imp));
-          }
-        }
-      }
     }
   }
   if (Changed) {

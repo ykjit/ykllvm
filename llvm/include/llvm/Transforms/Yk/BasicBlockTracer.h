@@ -12,7 +12,7 @@
 
 namespace llvm {
 
-ModulePass *createYkBasicBlockTracerPass(bool YkModuleClone);
+ModulePass *createYkBasicBlockTracerPass();
 } // namespace llvm
 
 #endif

@@ -10,24 +10,17 @@ namespace llvm {
 class YkShadowStack : public ModulePass {
 public:
   static char ID;
-  YkShadowStack(uint64_t controlPointCount);
+  YkShadowStack();
   bool runOnModule(Module &M) override;
-
-private:
-  uint64_t controlPointCount;
 };
-ModulePass *createYkShadowStackPass(uint64_t controlPointCount);
+ModulePass *createYkShadowStackPass();
 
 // New Pass Manager wrapper
 class YkShadowStackNew : public PassInfoMixin<YkShadowStackNew> {
 public:
-  YkShadowStackNew(uint64_t controlPointCount);
   YkShadowStackNew();
   PreservedAnalyses run(Module &M, ModuleAnalysisManager &);
   static StringRef name() { return "YkShadowStack"; }
-
-private:
-  uint64_t controlPointCount;
 };
 
 } // namespace llvm

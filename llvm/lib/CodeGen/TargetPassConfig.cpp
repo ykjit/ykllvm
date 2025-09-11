@@ -1142,13 +1142,15 @@ bool TargetPassConfig::addISelPasses() {
   addIRPasses();
   addCodeGenPrepare();
   addPassesToHandleExceptions();
-  
+
   // Default number of control points in a module.
-  int numberOfControlPoints = 1;
   if (YkModuleClone) {
     assert(YkBasicBlockTracer && "YkModuleClone requires YkShadowStackOpt");
-    numberOfControlPoints = YK_SWT_MODCLONE_CP_COUNT;
     addPass(createYkModuleClonePass());
+  }
+
+  if (YkOutlineUntraceable) {
+    addPass(createOutlineUntraceablePass());
   }
 
   if (YkBlockDisambiguate)
@@ -1163,12 +1165,8 @@ bool TargetPassConfig::addISelPasses() {
     addPass(createYkNoCallsInEntryBlocksPass());
   }
 
-  if (YkOutlineUntraceable) {
-    addPass(createOutlineUntraceablePass());
-  }
-
   if (YkShadowStackOpt) {
-    addPass(createYkShadowStackPass(numberOfControlPoints));
+    addPass(createYkShadowStackPass());
   }
   // We insert the yk control point pass as late as possible. It has to run
   // before instruction selection (or the machine IR won't reflect our
@@ -1182,7 +1180,7 @@ bool TargetPassConfig::addISelPasses() {
   // decomposed into scalar arguments. The JIT runtime relies on the interface
   // *not* being changed.
   if (YkPatchCtrlPoint) {
-    addPass(createYkControlPointPass(numberOfControlPoints));
+    addPass(createYkControlPointPass(1));
   }
 
   if (YkLinkage) {
@@ -1204,11 +1202,11 @@ bool TargetPassConfig::addISelPasses() {
   }
 
   if (YkInsertStackMaps) {
-    addPass(createYkStackmapsPass(numberOfControlPoints));
+    addPass(createYkStackmapsPass(1));
   }
 
   if (YkBasicBlockTracer) {
-    addPass(createYkBasicBlockTracerPass(YkModuleClone));
+    addPass(createYkBasicBlockTracerPass());
   }
 
   addISelPrepare();

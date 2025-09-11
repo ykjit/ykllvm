@@ -16,6 +16,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
 #include "llvm/Transforms/Yk/LivenessAnalysis.h"
+#include "llvm/Transforms/Yk/ModuleClone.h"
 #include "llvm/YkIR/YkIRWriter.h"
 
 #include <map>
@@ -46,6 +47,9 @@ public:
 
       // If we won't trace this function, no need for this transformation.
       if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
+        continue;
+      }
+      if (F.getMetadata(YK_SWT_OPT_MD)) {
         continue;
       }
 

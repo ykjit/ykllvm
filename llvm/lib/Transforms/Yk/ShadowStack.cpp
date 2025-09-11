@@ -131,13 +131,7 @@ class YkShadowStackImpl {
 
   using AllocaVector = std::vector<std::pair<AllocaInst *, size_t>>;
 
-private:
-  uint64_t controlPointCount;
-
 public:
-  YkShadowStackImpl(uint64_t controlPointCount)
-      : controlPointCount(controlPointCount) {}
-
   // Checks whether the given instruction allocates space for the result of a
   // call to `yk_mt_new`.
   bool isYkMTNewAlloca(AllocaInst *I) {
@@ -362,52 +356,6 @@ public:
     size_t SFrameSize = analyseFunction(*Main, DL, MainAllocas, MainRets);
     CallInst *Malloc = insertMainPrologue(Main, SFrameSize);
     auto MainGEPs = rewriteAllocas(DL, MainAllocas, Malloc);
-
-    // If we have two control points, we need to update the cloned main
-    // function as well.
-    if (controlPointCount == 2) {
-      Function *UnoptMain = M.getFunction(YK_SWT_UNOPT_MAIN);
-      if (UnoptMain == nullptr || UnoptMain->isDeclaration()) {
-        Context.emitError("Unable to add shadow stack: could not find "
-                          "definition " YK_SWT_UNOPT_MAIN " function!");
-        return;
-      }
-
-      AllocaVector UnoptMainAllocas;
-      std::vector<ReturnInst *> UnoptMainRets;
-      analyseFunction(*UnoptMain, DL, UnoptMainAllocas, UnoptMainRets);
-
-      // Insert a load of ShadowCurrent at the beginning of UnoptMain.
-      BasicBlock &EntryBB = UnoptMain->getEntryBlock();
-      Instruction *FirstNonPHI = EntryBB.getFirstNonPHI();
-      IRBuilder<> Builder(FirstNonPHI);
-
-      // Load the current shadow stack pointer from the global variable.
-      LoadInst *LoadedSSPtr = Builder.CreateLoad(Int8PtrTy, ShadowCurrent);
-      // Assert that the allocas count match between opt/unopt main
-      assert(MainAllocas.size() == UnoptMainAllocas.size() &&
-             "Expected same number of allocas between opt/unopt main");
-
-      auto UnoptMainGEPs = rewriteAllocas(DL, UnoptMainAllocas, LoadedSSPtr);
-      // Validate that opt and unopt main have the same GEPs.
-      assert(MainGEPs.size() == UnoptMainGEPs.size() &&
-             "Expected same number of GEPs between opt/unopt main");
-      // Validate that each pair of GEPs has matching offsets and types
-      for (size_t i = 0; i < MainGEPs.size(); i++) {
-        GetElementPtrInst *OptGEP = MainGEPs[i];
-        GetElementPtrInst *UnoptGEP = UnoptMainGEPs[i];
-        // Check that the offset operands match
-        ConstantInt *OptOffset = cast<ConstantInt>(OptGEP->getOperand(1));
-        ConstantInt *UnoptOffset = cast<ConstantInt>(UnoptGEP->getOperand(1));
-        assert(OptOffset->getValue() == UnoptOffset->getValue() &&
-               "GEP offsets must match between opt/unopt main");
-
-        // Check that the resulting pointer types match
-        assert(OptGEP->getResultElementType() ==
-                   UnoptGEP->getResultElementType() &&
-               "GEP result types must match between opt/unopt main");
-      }
-    }
   }
 
   bool run(Module &M) {
@@ -454,14 +402,22 @@ public:
         // skip declarations.
         continue;
       }
+      if (F.getMetadata(YK_SWT_OPT_MD)) {
+        continue;
+      }
       // skip already handled main and unopt functions
-      if (F.getName() == MAIN || F.getName() == YK_SWT_UNOPT_MAIN) {
+      if (F.getName() == MAIN) {
         continue;
       }
       // skip functions that will never be traced.
       if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
         continue;
       }
+      // skip optimised clones.
+      if (F.getMetadata(YK_SWT_OPT_MD)) {
+        continue;
+      }
+      assert(F.getMetadata(YK_SWT_OPT_MD) == nullptr);
 
       AllocaVector Allocas;
       std::vector<ReturnInst *> Rets;
@@ -523,25 +479,19 @@ public:
 char YkShadowStack::ID = 0;
 INITIALIZE_PASS(YkShadowStack, DEBUG_TYPE, "yk shadowstack", false, false)
 
-YkShadowStack::YkShadowStack(uint64_t controlPointCount)
-    : ModulePass(ID), controlPointCount(controlPointCount) {
+YkShadowStack::YkShadowStack() : ModulePass(ID) {
   initializeYkShadowStackPass(*PassRegistry::getPassRegistry());
 }
 
 bool YkShadowStack::runOnModule(Module &M) {
-  return YkShadowStackImpl(controlPointCount).run(M);
+  return YkShadowStackImpl().run(M);
 }
 
-ModulePass *llvm::createYkShadowStackPass(uint64_t controlPointCount) {
-  return new YkShadowStack(controlPointCount);
-}
+ModulePass *llvm::createYkShadowStackPass() { return new YkShadowStack(); }
 
-YkShadowStackNew::YkShadowStackNew() : controlPointCount(1) {}
-
-YkShadowStackNew::YkShadowStackNew(uint64_t controlPointCount)
-    : controlPointCount(controlPointCount) {}
+YkShadowStackNew::YkShadowStackNew() {}
 
 PreservedAnalyses YkShadowStackNew::run(Module &M, ModuleAnalysisManager &) {
-  bool Changed = YkShadowStackImpl(controlPointCount).run(M);
+  bool Changed = YkShadowStackImpl().run(M);
   return Changed ? PreservedAnalyses::none() : PreservedAnalyses::all();
 }
