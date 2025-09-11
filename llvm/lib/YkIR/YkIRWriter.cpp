@@ -1700,8 +1700,8 @@ private:
             }
             if (CF->getName() == YK_DEBUG_STR) {
               // Same for debug strings. How would the trace builder skip them?
-              F.getContext().emitError(Twine(YK_DEBUG_STR) +
-                                       "() detected in function '" +
+              F.getContext().emitError(Twine(YK_DEBUG_STR) + "() detected in " +
+                                       YK_OUTLINE_FNATTR + " function '" +
                                        F.getName() + "'\n");
             }
           }
