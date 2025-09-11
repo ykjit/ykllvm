@@ -6,6 +6,8 @@
 #include "llvm/MC/MCStreamer.h"
 
 #define YK_OUTLINE_FNATTR "yk_outline"
+#define YK_PROMOTE_PREFIX "__yk_promote"
+#define YK_DEBUG_STR "yk_debug_str"
 
 namespace llvm {
   void embedYkIR(MCContext &Ctx, MCStreamer &OutStreamer, Module &M);

@@ -218,6 +218,10 @@
 #include "llvm/IR/Module.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
+#include "llvm/Transforms/Yk/BasicBlockTracer.h"
+#include "llvm/Transforms/Yk/ControlPoint.h"
+#include "llvm/Transforms/Yk/ModuleClone.h"
+#include "llvm/YkIR/YkIRWriter.h"
 #include <llvm/IR/Dominators.h>
 #include <llvm/IR/IRBuilder.h>
 #include <llvm/IR/Verifier.h>
@@ -239,8 +243,16 @@ public:
   }
   bool runOnModule(Module &M) override {
     LLVMContext &Context = M.getContext();
-    for (Function &F : M)
+    for (Function &F : M) {
+      // Skip things that can't be traced.
+      if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
+        continue;
+      }
+      if (F.getMetadata(YK_SWT_OPT_MD)) {
+        continue;
+      }
       processFunction(Context, F);
+    }
     return true;
   }
 

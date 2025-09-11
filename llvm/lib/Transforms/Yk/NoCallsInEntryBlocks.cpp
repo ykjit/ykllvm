@@ -48,6 +48,7 @@
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/Yk/LivenessAnalysis.h"
+#include "llvm/Transforms/Yk/ModuleClone.h"
 
 #define DEBUG_TYPE "yk-no-more-entryblock-calls"
 
@@ -74,11 +75,12 @@ public:
     for (Function &F : M) {
       if (F.empty()) // skip declarations.
         continue;
+      if (F.getMetadata(YK_SWT_OPT_MD)) {
+        continue;
+      }
       BasicBlock &BB = F.getEntryBlock();
-      auto CurrFuncName = F.getName();
       for (Instruction &I : BB) {
         if (isa<CallInst>(I)) {
-          Function *F = cast<CallInst>(I).getCalledFunction();
           BB.splitBasicBlock(&I);
           break;
         }

@@ -61,6 +61,12 @@ public:
         continue;
       }
 
+      // FIXME: we could also skip stackmaps for optimised clones, but this
+      // requires more work.
+      // if (F.getMetadata(YK_SWT_OPT_MD)) {
+      //   continue;
+      // }
+
       LivenessAnalysis LA(&F);
       for (BasicBlock &BB : F) {
         for (Instruction &I : BB) {
