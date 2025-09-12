@@ -274,7 +274,6 @@ private:
 
       // YKFIXME: not implemented.
       // https://github.com/ykjit/yk/issues/440
-      assert(!isa<IndirectBrInst>(TI));
 
       if (isa<BranchInst>(TI)) {
         BranchInst *BI = cast<BranchInst>(TI);
@@ -284,6 +283,17 @@ private:
           if (SuccBB == &BB) {
             BasicBlock *DBB = makeBranchDisambiguationBB(Context, &BB, NewBBs);
             BI->setSuccessor(SuccIdx, DBB);
+            BB.replacePhiUsesWith(&BB, DBB);
+          }
+        }
+      } else if (isa<IndirectBrInst>(TI)) {
+        IndirectBrInst *IBI = cast<IndirectBrInst>(TI);
+        for (unsigned SuccIdx = 0; SuccIdx < IBI->getNumSuccessors();
+             SuccIdx++) {
+          BasicBlock *SuccBB = IBI->getSuccessor(SuccIdx);
+          if (SuccBB == &BB) {
+            BasicBlock *DBB = makeBranchDisambiguationBB(Context, &BB, NewBBs);
+            IBI->setSuccessor(SuccIdx, DBB);
             BB.replacePhiUsesWith(&BB, DBB);
           }
         }
