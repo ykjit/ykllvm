@@ -449,10 +449,40 @@ public:
               Value *OrigPtr =
                   Builder.CreateLoad(PointerType::get(M.getContext(), 0),
                                      ShadowCurrent, /*isVolatile=*/true);
-              // After the call, restore the shadow stack poninter to its
-              // original value.
-              Builder.SetInsertPoint(I.getNextNode());
-              Builder.CreateStore(OrigPtr, ShadowCurrent);
+              // Assuming this is setjmp() or similar, after the call, restore
+              // the shadow stack pointer if a longjmp() happened.
+              if ((CF->getName() == "setjmp") || (CF->getName() == "_setjmp") ||
+                  (CF->getName() == "sigsetjmp")) {
+
+                BasicBlock *SetJmpBB = I.getParent();
+                BasicBlock *DoneBB = SetJmpBB->splitBasicBlock(I.getNextNode());
+
+                // Remove unconditional branch inserted by the split.
+                Instruction *BrInst = I.getNextNode();
+                assert(SetJmpBB->getTerminator() == BrInst);
+                BrInst->eraseFromParent();
+
+                // Make a new block to contain the store.
+                BasicBlock *StoreBB = BasicBlock::Create(
+                    M.getContext(), "", SetJmpBB->getParent(), DoneBB);
+
+                // Test if the store is needed.
+                Builder.SetInsertPoint(SetJmpBB);
+                Value *StoreNotNeeded =
+                    Builder.CreateICmp(CmpInst::Predicate::ICMP_EQ, &I,
+                                       ConstantInt::get(I.getType(), 0));
+                Builder.CreateCondBr(StoreNotNeeded, DoneBB, StoreBB);
+
+                // Emit the store.
+                Builder.SetInsertPoint(StoreBB);
+                Builder.CreateStore(OrigPtr, ShadowCurrent);
+                Builder.CreateBr(DoneBB);
+              } else {
+                Context.emitError("Unknown returns_twice function encountered "
+                                  "in shadow stack pass: " +
+                                  CF->getName());
+                return true;
+              }
             }
           }
         }
