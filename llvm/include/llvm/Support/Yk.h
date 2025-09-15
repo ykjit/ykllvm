@@ -7,7 +7,7 @@ void initYkOptions(void);
 
 // YKFIXME: all of our command-line arguments should be collected here instead
 // of us randomly introducing `extern bool`s all over the place.
-extern bool YkOptNoneAfterIRPasses;
+extern bool YkMarkTraceableOptNone;
 extern bool YkDontOptFuncABI;
 extern bool YkPatchCtrlPoint;
 extern bool YkPatchIdempotent;

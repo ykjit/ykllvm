@@ -57,6 +57,7 @@
 #include "llvm/Transforms/Yk/ShadowStack.h"
 #include "llvm/Transforms/Yk/SplitBlocksAfterCalls.h"
 #include "llvm/Transforms/Yk/Stackmaps.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "llvm/Transforms/Yk/NoCallsInEntryBlocks.h"
 #include "llvm/Transforms/Yk/BasicBlockTracer.h"
 #include "llvm/Transforms/Yk/ModuleClone.h"
@@ -1132,6 +1133,19 @@ bool TargetPassConfig::addCoreISelPasses() {
 }
 
 bool TargetPassConfig::addISelPasses() {
+  if (YkModuleClone) {
+    assert(YkBasicBlockTracer && "YkModuleClone requires YkShadowStackOpt");
+    addPass(createYkModuleClonePass());
+  }
+
+  if (YkOutlineUntraceable) {
+    addPass(createOutlineUntraceablePass());
+  }
+
+  if (YkMarkTraceableOptNone) {
+    addPass(createYkMarkTraceableOptNonePass());
+  }
+
   if (TM->useEmulatedTLS())
     addPass(createLowerEmuTLSPass());
 
@@ -1142,16 +1156,6 @@ bool TargetPassConfig::addISelPasses() {
   addIRPasses();
   addCodeGenPrepare();
   addPassesToHandleExceptions();
-
-  // Default number of control points in a module.
-  if (YkModuleClone) {
-    assert(YkBasicBlockTracer && "YkModuleClone requires YkShadowStackOpt");
-    addPass(createYkModuleClonePass());
-  }
-
-  if (YkOutlineUntraceable) {
-    addPass(createOutlineUntraceablePass());
-  }
 
   if (YkBlockDisambiguate)
     addPass(createYkBlockDisambiguatePass());

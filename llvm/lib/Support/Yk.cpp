@@ -67,20 +67,20 @@ static ManagedStatic<cl::opt<bool, true>,
                      CreateYkStackmapsSpillReloadsFixParser>
     YkStackmapsSpillFixParser;
 
-bool YkOptNoneAfterIRPasses;
+bool YkMarkTraceableOptNone;
 namespace {
-struct CreateYkOptNoneAfterIRPassesParser {
+struct CreateYkMarkTraceableOptNoneParser {
   static void *call() {
     return new cl::opt<bool, true>(
-        "yk-optnone-after-ir-passes",
+        "yk-mark-traceable-optnone-after-ir-passes",
         cl::desc(
-            "Apply `optnone` to all functions prior to instruction selection."),
-        cl::NotHidden, cl::location(YkOptNoneAfterIRPasses));
+            "Apply `optnone` to all traceable functions prior to instruction selection."),
+        cl::NotHidden, cl::location(YkMarkTraceableOptNone));
   }
 };
 } // namespace
 static ManagedStatic<cl::opt<bool, true>,
-  CreateYkOptNoneAfterIRPassesParser> YkOptNoneAfterIRPassesParser;
+  CreateYkMarkTraceableOptNoneParser> YkMarkTraceableOptNoneParser;
 
 bool YkEmbedIR;
 namespace {
@@ -154,7 +154,7 @@ void llvm::initYkOptions() {
   *YkStackMapOffsetFixParser;
   *YkStackMapAdditionalLocsParser;
   *YkStackmapsSpillFixParser;
-  *YkOptNoneAfterIRPassesParser;
+  *YkMarkTraceableOptNoneParser;
   *YkEmbedIRParser;
   *YkDontOptFuncABIParser;
   *YkPatchCtrlPointParser;
