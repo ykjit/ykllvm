@@ -1,4 +1,4 @@
-// RUN: %clang -flto -Xclang -disable-O0-optnone -fuse-ld=lld -Wl,--mllvm=--yk-stackmap-spillreloads-fix -Wl,--mllvm=--yk-insert-stackmaps -Wl,--mllvm=--yk-optnone-after-ir-passes -Wl,--lto-newpm-passes=instcombine -Wl,--mllvm=--yk-shadow-stack %s
+// RUN: %clang -flto -Xclang -disable-O0-optnone -fuse-ld=lld -Wl,--mllvm=--yk-stackmap-spillreloads-fix -Wl,--mllvm=--yk-insert-stackmaps -Wl,--mllvm=--yk-mark-traceable-optnone-after-ir-passes -Wl,--lto-newpm-passes=instcombine -Wl,--mllvm=--yk-shadow-stack %s
 
 // Test case scenario extracted from CPython source code: license at
 // https://github.com/python/cpython/blob/main/LICENSE.

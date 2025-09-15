@@ -11,6 +11,7 @@ add_llvm_component_library(LLVMYkPasses
   SplitBlocksAfterCalls.cpp
   BasicBlockTracer.cpp
   ModuleClone.cpp
+  MarkTraceableOptNone.cpp
 
   DEPENDS
   intrinsics_gen
