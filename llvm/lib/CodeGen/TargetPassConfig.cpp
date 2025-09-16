@@ -302,6 +302,10 @@ static cl::opt<bool>
     YkModuleClone("yk-module-clone", cl::init(false), cl::NotHidden,
                   cl::desc("Enables YK Module Cloning capability"));
 
+static cl::opt<bool>
+    YkOptFunctionsOnly("yk-opt-functions-only", cl::init(false), cl::NotHidden,
+                                cl::desc("Creates only optimised functions in the IR module"));
+
 /// Allow standard passes to be disabled by command line options. This supports
 /// simple binary flags that either suppress the pass or do nothing.
 /// i.e. -disable-mypass=false has no effect.
@@ -1133,7 +1137,9 @@ bool TargetPassConfig::addCoreISelPasses() {
 }
 
 bool TargetPassConfig::addISelPasses() {
-  if (YkModuleClone) {
+  // ModuleClone creates optimised and unoptimised versions of functions.
+  // If we are creating optimised functions, then we don't need to run this pass.
+  if (!YkOptFunctionsOnly && YkModuleClone) {
     assert(YkBasicBlockTracer && "YkModuleClone requires YkShadowStackOpt");
     addPass(createYkModuleClonePass());
   }
@@ -1142,7 +1148,7 @@ bool TargetPassConfig::addISelPasses() {
     addPass(createOutlineUntraceablePass());
   }
 
-  if (YkMarkTraceableOptNone) {
+  if (!YkOptFunctionsOnly && YkMarkTraceableOptNone) {
     addPass(createYkMarkTraceableOptNonePass());
   }
 
@@ -1208,8 +1214,10 @@ bool TargetPassConfig::addISelPasses() {
   if (YkInsertStackMaps) {
     addPass(createYkStackmapsPass(1));
   }
-
-  if (YkBasicBlockTracer) {
+  // BasicBlockTracer injects tracing calls to the IR module.
+  // If we are only creating optimised functions, then we don't need to inject
+  // these tracing calls.
+  if (!YkOptFunctionsOnly && YkBasicBlockTracer) {
     addPass(createYkBasicBlockTracerPass());
   }
 
