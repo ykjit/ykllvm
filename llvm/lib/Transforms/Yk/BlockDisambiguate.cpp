@@ -1,7 +1,15 @@
 //===- BlockDisambiguate.cpp - Unambiguous block mapping for yk ----===//
 //
-// This pass ensures that yk is able to unambiguously map machine blocks back
-// to LLVM IR blocks. Specifically it does two separate, but related, things:
+// For hardware tracing, this pass ensures that yk is able to unambiguously map
+// machine blocks back to LLVM IR blocks.
+//
+// For software tracing it ensures that the trace builder's outliner is
+// reliably able to detect when to stop outlining before a `ret` instruction.
+//
+// Hardware Tracing
+// ================
+//
+// For HWT this pass does two separate, but related, things:
 //
 //  - Inserts blocks to disambiguate intra-function branching.
 //  - Inserts blocks to disambiguate returning from direct recursion.
@@ -167,8 +175,36 @@
 // collapse repeated entries for the same block when constructing the mapped
 // trace.
 //
+// Software Tracing
+// ================
+//
+// For software tracing, the "return splitting" is required but for a different
+// reason.
+//
+// When the trace builder is outlining, it waits until it sees the
+// intraprocedural successor of the call that started outlining, then it turns
+// off outlining.
+//
+// If a block looks like this, then there is no intraprocedural successor, so
+// this confuses the outliner logic:
+//
+// ```
+//   call something_outlined
+//   ret
+// ```
+//
+// So this pass transforms the block into:
+//
+// ```
+//   call something_outlined
+//   br bbX
+//
+// bbX:
+//   ret
+// ```
+//
 // Discussion
-// ----------
+// ==========
 //
 // The pass runs after high-level IR optimisations (and requires some backend
 // optimisations disabled) to ensure that LLVM doesn't undo our work, by
