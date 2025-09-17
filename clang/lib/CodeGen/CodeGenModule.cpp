@@ -2453,6 +2453,10 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
       // function would give a trace where `F` was actually inlined instead of
       // outlined.
       B.addAttribute(llvm::Attribute::NoInline);
+      // Remove the `AlwaysInlined` attribute if it's set, so it doesn't clash
+      // with the `NoInline` attribute.
+      F->removeFnAttr(llvm::Attribute::AlwaysInline);
+      B.removeAttribute(llvm::Attribute::AlwaysInline);
     }
   }
 
