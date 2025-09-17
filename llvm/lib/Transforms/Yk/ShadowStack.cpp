@@ -478,9 +478,15 @@ public:
                 Builder.CreateStore(OrigPtr, ShadowCurrent);
                 Builder.CreateBr(DoneBB);
               } else {
-                Context.emitError("Unknown returns_twice function encountered "
-                                  "in shadow stack pass: " +
-                                  CF->getName());
+                // Since `vfork` spawns a new process which gets its own shadow
+                // stack, this call doesn't change the shadow stack and can be
+                // ignored.
+                if (CF->getName() != "vfork") {
+                  Context.emitError(
+                      "Unknown returns_twice function encountered "
+                      "in shadow stack pass: " +
+                      CF->getName());
+                }
                 return true;
               }
             }
