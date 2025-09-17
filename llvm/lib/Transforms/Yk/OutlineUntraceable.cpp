@@ -13,6 +13,7 @@
 
 #include "llvm/Transforms/Yk/OutlineUntraceable.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -55,14 +56,14 @@ public:
           }
           // But does it actually call F? It could just be passing a function
           // pointer to F as an argument to a different callee.
-          Value *CF = CB->getCalledFunction();
+          Function *CF =
+              dyn_cast<Function>(CB->getCalledOperand()->stripPointerCasts());
           if (CF == nullptr) {
             assert(CB->isIndirectCall());
             assert(F.hasAddressTaken());
             continue;
           }
-          Function *Callee = cast<Function>(CB->getCalledFunction());
-          if (Callee == &F) {
+          if (CF == &F) {
             // It really is a direct call to F.
             Function *ParentF = CB->getFunction();
             NodeMap[&F].insert(ParentF);
@@ -70,7 +71,9 @@ public:
             assert(F.hasAddressTaken());
           }
         } else {
-          assert(F.hasAddressTaken());
+          if (!isa<BlockAddress>(U)) {
+            assert(F.hasAddressTaken());
+          }
         }
       }
     }
