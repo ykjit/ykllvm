@@ -298,10 +298,6 @@ static cl::opt<bool>
     YkBasicBlockTracer("yk-basicblock-tracer", cl::init(false), cl::NotHidden,
                       cl::desc("Enables YK Software Tracer capability"));
 
-static cl::opt<bool>
-    YkModuleClone("yk-module-clone", cl::init(false), cl::NotHidden,
-                  cl::desc("Enables YK Module Cloning capability"));
-
 /// Allow standard passes to be disabled by command line options. This supports
 /// simple binary flags that either suppress the pass or do nothing.
 /// i.e. -disable-mypass=false has no effect.
@@ -1133,11 +1129,6 @@ bool TargetPassConfig::addCoreISelPasses() {
 }
 
 bool TargetPassConfig::addISelPasses() {
-  if (YkModuleClone) {
-    assert(YkBasicBlockTracer && "YkModuleClone requires YkShadowStackOpt");
-    addPass(createYkModuleClonePass());
-  }
-
   if (YkOutlineUntraceable) {
     addPass(createOutlineUntraceablePass());
   }
