@@ -12,5 +12,6 @@ extern bool YkDontOptFuncABI;
 extern bool YkPatchCtrlPoint;
 extern bool YkPatchIdempotent;
 extern bool YkOutlineUntraceable;
+extern bool YkModuleClone;
 
 #endif

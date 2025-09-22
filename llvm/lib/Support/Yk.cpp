@@ -149,6 +149,19 @@ struct CreateYkOutlineUntraceableParser {
 } // namespace
 static ManagedStatic<cl::opt<bool, true>, CreateYkOutlineUntraceableParser> YkOutlineUntraceableParser;
 
+bool YkModuleClone;
+namespace {
+struct CreateYkModuleCloneParser {
+  static void *call() {
+    return new cl::opt<bool, true>(
+        "yk-module-clone",
+        cl::desc("Enables YK Module Cloning capability"),
+        cl::NotHidden, cl::location(YkModuleClone));
+  }
+};
+} // namespace
+static ManagedStatic<cl::opt<bool, true>, CreateYkModuleCloneParser> YkModuleCloneParser;
+
 void llvm::initYkOptions() {
   *YkExtendedLLVMBBAddrMapSectionParser;
   *YkStackMapOffsetFixParser;
@@ -160,4 +173,5 @@ void llvm::initYkOptions() {
   *YkPatchCtrlPointParser;
   *YkPatchIdempotentParser;
   *YkOutlineUntraceableParser;
+  *YkModuleCloneParser;
 }

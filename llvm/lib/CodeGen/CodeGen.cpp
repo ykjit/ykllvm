@@ -154,5 +154,4 @@ void llvm::initializeCodeGen(PassRegistry &Registry) {
   initializeYkSplitBlocksAfterCallsPass(Registry);
   initializeYkBasicBlockTracerPass(Registry);
   initializeYkShadowStackPass(Registry);
-  initializeYkModuleClonePass(Registry);
 }

@@ -2432,6 +2432,10 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
   // If `F->empty()` then this is merely a function declaration for which we
   // have no IR. In this case the JIT will be unable to inline calls to this
   // function anyway, so there's no need to conservatively add `yk_outline`.
+  //
+  // FIXME: This doesn't really belong in clang. It should be put into an
+  // early-running LLVM pass (and we would have to pass down the yk_unroll_safe
+  // atrributes to the IR-level). Then this logic would be frontend agnostic.
   if (CodeGenOpts.YkNoinlineFuncsWithLoops && !F->empty()) {
     llvm::DominatorTree DT(*F);
     llvm::LoopInfo LI(DT);
@@ -2452,6 +2456,9 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
       // then `F` may be inlined into a parent function and tracing the parent
       // function would give a trace where `F` was actually inlined instead of
       // outlined.
+      //
+      // If module cloning is being used, then optimised clones may have
+      // NoInline removed later.
       B.addAttribute(llvm::Attribute::NoInline);
       // Remove the `AlwaysInlined` attribute if it's set, so it doesn't clash
       // with the `NoInline` attribute.
