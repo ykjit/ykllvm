@@ -190,21 +190,6 @@ template <class T> string toString(T *X) {
   return S;
 }
 
-// Get the index of an element in its parent container.
-template <class C, class E> size_t getIndex(C *Container, E *FindElement) {
-  bool Found = false;
-  size_t Idx = 0;
-  for (E &AnElement : *Container) {
-    if (&AnElement == FindElement) {
-      Found = true;
-      break;
-    }
-    Idx++;
-  }
-  assert(Found);
-  return Idx;
-}
-
 // An instruction index that uniquely identifies a Yk instruction within
 // a basic block.
 //
@@ -318,12 +303,11 @@ private:
   vector<llvm::Type *> Types;
   vector<llvm::Constant *> Constants;
   vector<llvm::GlobalVariable *> Globals;
-  // Maps a function to its index. This is not the same as the index in
-  // the module's function list because we skip cloned functions in
-  // serialisation.
-  std::unordered_map<llvm::Function *, size_t> FunctionIndexMap;
   // File paths.
   vector<string> Paths;
+
+  llvm::DenseMap<llvm::Function *, size_t> FunctionCache;
+  llvm::DenseMap<llvm::BasicBlock *, size_t> BBCache;
 
   // Line-level debug line info for the instructions of the module.
   //
@@ -354,6 +338,10 @@ private:
     return Idx;
   }
 
+  size_t getIndex(Function *F) { return FunctionCache.at(F); }
+
+  size_t getIndex(BasicBlock *F) { return BBCache.at(F); }
+
   // Return the index of the LLVM constant `C`, inserting a new entry if
   // necessary.
   size_t constantIndex(Constant *C) {
@@ -380,16 +368,6 @@ private:
     return Idx;
   }
 
-  size_t functionIndex(llvm::Function *F) {
-    auto it = FunctionIndexMap.find(F);
-    if (it != FunctionIndexMap.end()) {
-      return it->second;
-    }
-    llvm::errs() << "Function not found in function index map: " << F->getName()
-                 << "\n";
-    llvm::report_fatal_error("Function not found in function index map");
-  }
-
   // Serialises a null-terminated string.
   void serialiseString(StringRef S) {
     OutStreamer.emitBinaryData(S);
@@ -409,9 +387,9 @@ private:
     // operand kind:
     serialiseOperandKind(OperandKindLocal);
     // func_idx:
-    OutStreamer.emitSizeT(getIndex(&M, I->getFunction()));
+    OutStreamer.emitSizeT(getIndex(I->getFunction()));
     // bb_idx:
-    OutStreamer.emitSizeT(getIndex(I->getFunction(), I->getParent()));
+    OutStreamer.emitSizeT(getIndex(I->getParent()));
 
     // inst_idx:
     if (FLCtxt.vlMapContains(I)) {
@@ -432,19 +410,19 @@ private:
 
   void serialiseFunctionOperand(llvm::Function *F) {
     serialiseOperandKind(OperandKindFunction);
-    OutStreamer.emitSizeT(functionIndex(F));
+    OutStreamer.emitSizeT(getIndex(F));
   }
 
   void serialiseBlockLabel(BasicBlock *BB) {
     // Basic block indices are the same in both LLVM IR and our IR.
-    OutStreamer.emitSizeT(getIndex(BB->getParent(), BB));
+    OutStreamer.emitSizeT(getIndex(BB));
   }
 
   void serialiseArgOperand(Argument *A, FuncLowerCtxt &FLCtxt) {
     // operand kind:
     serialiseOperandKind(OperandKindLocal);
     // func_idx:
-    OutStreamer.emitSizeT(getIndex(&M, A->getParent()));
+    OutStreamer.emitSizeT(getIndex(A->getParent()));
     // bb_idx:
     OutStreamer.emitSizeT(0);
 
@@ -895,7 +873,7 @@ private:
 
     serialiseOpcode(OpCodeCall);
     // callee:
-    OutStreamer.emitSizeT(functionIndex(CF));
+    OutStreamer.emitSizeT(getIndex(CF));
     // num_args:
     // (this includes static and varargs arguments)
     OutStreamer.emitInt32(I->arg_size());
@@ -1555,8 +1533,7 @@ private:
     DebugLoc DL = I->getDebugLoc();
     if (DL) {
       DILocation *DLoc = DL.get();
-      // This could be optimised by passing the function index down.
-      FuncIdx FuncIdx = getIndex(&M, I->getFunction());
+      FuncIdx FuncIdx = getIndex(I->getFunction());
       InstID Key = {FuncIdx, BBlockIdx, InstIdx};
       stringstream Path;
 #ifdef __unix__
@@ -1998,15 +1975,17 @@ public:
     assert(IdxBitWidth <= 0xff);
     OutStreamer.emitInt8(IdxBitWidth);
 
-    // num_funcs:
-    // Count functions for serilaisation and populate functions map
-    int functionCount = 0;
-    for (llvm::Function &F : M) {
-      FunctionIndexMap[&F] = functionCount;
-      functionCount++;
+    // Precompute func and bb indices
+    size_t FuncIdx = 0;
+    for (auto &F : M) {
+      FunctionCache[&F] = FuncIdx++;
+      size_t BBIdx = 0;
+      for (BasicBlock &BB : F) {
+        BBCache[&BB] = BBIdx++;
+      }
     }
     // Emit the number of functions
-    OutStreamer.emitSizeT(functionCount);
+    OutStreamer.emitSizeT(FuncIdx);
     // funcs:
     for (llvm::Function &F : M) {
       serialiseFunc(F);
