@@ -111,6 +111,7 @@ ModuleClonePass::cloneFunctionsInModule(Module &M) {
       if (!ClonedOptFunc->hasFnAttribute(Attribute::OptimizeNone)) {
         ClonedOptFunc->removeFnAttr(Attribute::NoInline);
       }
+      ClonedOptFunc->addFnAttr(YK_OUTLINE_FNATTR);
     }
     // Update the map. If we didn't clone, then we insert a nullptr value.
     CloneMap[F] = ClonedOptFunc;
@@ -165,7 +166,9 @@ void ModuleClonePass::updateCalls(std::map<Function *, Function *> &CloneMap, Mo
   // existent) in optimised clones and functions marked yk_outline. Since the
   // caller can't be traced, neither can the callee.
   for (Function &F: M) {
-    if (!F.hasFnAttribute(YK_OUTLINE_FNATTR) && !F.getMetadata(YK_SWT_OPT_MD)) {
+    // If it's not a yk_outline functiion, then it could be traced, and we
+    // shouldn't update the callees.
+    if (!F.hasFnAttribute(YK_OUTLINE_FNATTR)) {
       continue;
     }
     // If it contains a control point, replacing the callees would be
