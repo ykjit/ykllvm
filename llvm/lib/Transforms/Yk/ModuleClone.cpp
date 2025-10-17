@@ -161,11 +161,12 @@ void ModuleClonePass::removePromotionsAndDebugStrings(Function *F) {
 ///
 /// @param CloneMap Maps unoptimised function to their optimised counterparts
 /// (if they were cloned).
-void ModuleClonePass::updateCalls(std::map<Function *, Function *> &CloneMap, Module &M) {
+void ModuleClonePass::updateCalls(std::map<Function *, Function *> &CloneMap,
+                                  Module &M) {
   // Replace calls to unoptimised versions to their optimised versions (if
   // existent) in optimised clones and functions marked yk_outline. Since the
   // caller can't be traced, neither can the callee.
-  for (Function &F: M) {
+  for (Function &F : M) {
     // If it's not a yk_outline functiion, then it could be traced, and we
     // shouldn't update the callees.
     if (!F.hasFnAttribute(YK_OUTLINE_FNATTR)) {
