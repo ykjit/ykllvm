@@ -162,6 +162,19 @@ struct CreateYkModuleCloneParser {
 } // namespace
 static ManagedStatic<cl::opt<bool, true>, CreateYkModuleCloneParser> YkModuleCloneParser;
 
+bool YkShimCallees;
+namespace {
+struct CreateYkShimCalleesParser {
+  static void *call() {
+    return new cl::opt<bool, true>(
+        "yk-shim-callees",
+        cl::desc("Enables shimming in traceable AOT code for Yk JIT"),
+        cl::NotHidden, cl::location(YkShimCallees));
+  }
+};
+} // namespace
+static ManagedStatic<cl::opt<bool, true>, CreateYkShimCalleesParser> YkShimCalleesParser;
+
 void llvm::initYkOptions() {
   *YkExtendedLLVMBBAddrMapSectionParser;
   *YkStackMapOffsetFixParser;
@@ -174,4 +187,5 @@ void llvm::initYkOptions() {
   *YkPatchIdempotentParser;
   *YkOutlineUntraceableParser;
   *YkModuleCloneParser;
+  *YkShimCalleesParser;
 }

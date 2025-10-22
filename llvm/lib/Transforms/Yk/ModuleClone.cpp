@@ -111,6 +111,7 @@ ModuleClonePass::cloneFunctionsInModule(Module &M) {
       if (!ClonedOptFunc->hasFnAttribute(Attribute::OptimizeNone)) {
         ClonedOptFunc->removeFnAttr(Attribute::NoInline);
       }
+      ClonedOptFunc->addFnAttr(YK_OUTLINE_FNATTR);
     }
     // Update the map. If we didn't clone, then we insert a nullptr value.
     CloneMap[F] = ClonedOptFunc;
@@ -160,17 +161,24 @@ void ModuleClonePass::removePromotionsAndDebugStrings(Function *F) {
 ///
 /// @param CloneMap Maps unoptimised function to their optimised counterparts
 /// (if they were cloned).
-void ModuleClonePass::updateCalls(std::map<Function *, Function *> &CloneMap) {
-
-  // Update calls in the optimised function.
-  for (auto [UnoptF, OptF] : CloneMap) {
-    if (OptF == nullptr) {
-      // We didn't clone that function. Skip.
+void ModuleClonePass::updateCalls(std::map<Function *, Function *> &CloneMap,
+                                  Module &M) {
+  // Replace calls to unoptimised versions to their optimised versions (if
+  // existent) in optimised clones and functions marked yk_outline. Since the
+  // caller can't be traced, neither can the callee.
+  for (Function &F : M) {
+    // If it's not a yk_outline functiion, then it could be traced, and we
+    // shouldn't update the callees.
+    if (!F.hasFnAttribute(YK_OUTLINE_FNATTR)) {
       continue;
     }
-    // Loop over the optimised function, replacing callees with optimised
-    // versions where possible.
-    for (BasicBlock &BB : *OptF) {
+    // If it contains a control point, replacing the callees would be
+    // detrimental to traces, since we wouldn't be able to inline callees into
+    // the trace.
+    if (containsControlPoint(F)) {
+      continue;
+    }
+    for (BasicBlock &BB : F) {
       for (Instruction &I : BB) {
         if (auto *Call = dyn_cast<CallInst>(&I)) {
           Function *CalledFunc = Call->getCalledFunction();
@@ -197,7 +205,7 @@ PreservedAnalyses ModuleClonePass::run(Module &M, ModuleAnalysisManager &MAM) {
     Context.emitError("Failed to clone functions in module");
     return PreservedAnalyses::none();
   }
-  updateCalls(*CloneMap);
+  updateCalls(*CloneMap, M);
 
   if (verifyModule(M, &errs())) {
     Context.emitError("Module verification failed!");

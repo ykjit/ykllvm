@@ -25,7 +25,7 @@ public:
   cloneFunctionsInModule(Module &);
   void removePromotion(CallBase *);
   void removePromotionsAndDebugStrings(Function *);
-  void updateCalls(std::map<Function *, Function *> &);
+  void updateCalls(std::map<Function *, Function *> &, Module &);
 };
 
 } // namespace llvm
