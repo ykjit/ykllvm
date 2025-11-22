@@ -92,8 +92,13 @@ public:
               // block here.
               continue;
             }
-            // YKFIXME: If the next instruction is an unconditional branch, we
-            // don't need to split the block here.
+            // If the next instruction is an unconditional branch, we don't
+            // need to split the block.
+            if (BranchInst *BI = dyn_cast<BranchInst>(I.getNextNode())) {
+              if (BI->isUnconditional()) {
+                continue;
+              }
+            }
 
             // Since `splitBasicBlock` splits before the given instruction,
             // pass the instruction following this call instead.
