@@ -7205,6 +7205,14 @@ def YkUnrollSafeDocs : Documentation {
   }];
 }
 
+def YkIndirectInlineDocs : Documentation {
+  let Category = DocCatFunction;
+  let Content = [{
+    This attribute prevents functions only called indirectly from being
+    marked yk_outline.
+  }];
+}
+
 def ReadOnlyPlacementDocs : Documentation {
   let Category = DocCatType;
   let Content = [{This attribute is attached to a structure, class or union declaration.

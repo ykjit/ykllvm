@@ -39,6 +39,7 @@ const int PPArgIdxNumTargetArgs = 3;
 // Function flags.
 const uint8_t YkFuncFlagOutline = 1;
 const uint8_t YkFuncFlagIdempotent = 2;
+const uint8_t YkFuncFlagInlineIndirect = 4;
 
 #include <sstream>
 
@@ -1713,6 +1714,9 @@ private:
     }
     if (F.hasFnAttribute(YK_IDEMPOTENT_FNATTR)) {
       Flags |= YkFuncFlagIdempotent;
+    }
+    if (F.hasFnAttribute(YK_INDIRECT_INLINE_FNATTR)) {
+      Flags |= YkFuncFlagInlineIndirect;
     }
     OutStreamer.emitInt8(Flags);
   }

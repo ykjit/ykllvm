@@ -1,8 +1,8 @@
 //===- OutlineUntraceable.cpp - Add yk_outline to untraceable functions -===
 ////
 //
-// This pass searches for functions which can never be traced and marks them
-// `yk_outline`. This has two effects:
+// This pass searches for functions which are unlikely to be traced and marks
+// them `yk_outline`. This has two effects:
 //
 //  - It causes instrumentation passes that run after this to ignore the
 //    untraceable functions. This means that we don't have to pay a runtime
@@ -94,7 +94,19 @@ public:
     bool Changed = false;
 
     for (Function &F : M) {
-      if ((!F.isDeclaration()) && (!couldBeTraced(&IG, &F))) {
+      // Note that the inverted call graph doesn't take into account indirect
+      // calls. This means that we will sometimes consider functions that could
+      // be traceable (via indirect calls) untraceable.
+      //
+      // An earlier attempt to consider functions called from functions with
+      // their address taken, as potentially traceable, lead to much worse
+      // performance overall. We may need to revisit this.
+      //
+      // To prevent this pass from `yk_outline`ing a function only called
+      // indirectly, the interpreter author can annotate it with the
+      // `yk_indirect_inline` function attribute.
+      if ((!F.isDeclaration()) && (!couldBeTraced(&IG, &F)) &&
+          (!F.hasFnAttribute(YK_INDIRECT_INLINE_FNATTR))) {
         F.addFnAttr(YK_OUTLINE_FNATTR);
         Changed = true;
       }
