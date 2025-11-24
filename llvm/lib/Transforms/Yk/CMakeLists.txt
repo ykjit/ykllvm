@@ -12,7 +12,6 @@ add_llvm_component_library(LLVMYkPasses
   BasicBlockTracer.cpp
   ModuleClone.cpp
   MarkTraceableOptNone.cpp
-  ShimCallees.cpp
 
   DEPENDS
   intrinsics_gen
