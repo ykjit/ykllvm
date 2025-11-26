@@ -4255,6 +4255,13 @@ def YkUnrollSafe : InheritableAttr {
   let SimpleHandler = 1;
 }
 
+def YkIndirectInline : InheritableAttr {
+  let Spellings = [GCC<"yk_indirect_inline">, Declspec<"yk_indirect_inline">];
+  let Subjects = SubjectList<[Function]>;
+  let Documentation = [YkIndirectInlineDocs];
+  let SimpleHandler = 1;
+}
+
 def WebAssemblyFuncref : TypeAttr, TargetSpecificAttr<TargetWebAssembly> {
   let Spellings = [CustomKeyword<"__funcref">];
   let Documentation = [WebAssemblyExportNameDocs];

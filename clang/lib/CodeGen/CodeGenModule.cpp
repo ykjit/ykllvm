@@ -2423,6 +2423,10 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
     B.addAttribute(YK_IDEMPOTENT_FNATTR);
   }
 
+  if (D->hasAttr<YkIndirectInlineAttr>()) {
+    B.addAttribute(YK_INDIRECT_INLINE_FNATTR);
+  }
+
   // Mark all functions containing loops with `yk_outline` unless the function
   // was annotated `yk_unroll_safe`.
   //
