@@ -2,6 +2,9 @@
 //
 // Converts an LLVM module into Yk's on-disk AOT IR.
 //
+// Note that this serialiser now assumes that the yk basic block tracer pass
+// has been run prior.
+//
 //===-------------------------------------------------------------------===//
 
 #include "llvm/YkIR/YkIRWriter.h"
@@ -278,6 +281,32 @@ public:
   bool vlMapContains(Instruction *I) { return VLMap.count(I) == 1; }
 };
 
+// Idenitfies the "purpose" of a basic block.
+enum BBPurpose {
+  // This block is a "is the current thread tracing?" check.
+  BBPurposeTracingCheck,
+  // This block records a basic block, if we are tracing.
+  BBPurposeRecord,
+  // This block is serialised (into yk AOT IR).
+  BBPurposeSerialise,
+};
+
+// An entry in the basic block cache.
+struct BBCacheEntry {
+  // The purpose of the block.
+  BBPurpose Purpose;
+  // The yk AOT IR basic block index that the above purpose applies to.
+  size_t BBIdx;
+  // The BBPurposeSerialiseBB LLVM IR block that this entry corresponds with.
+  BasicBlock *SerBB;
+};
+
+// An entry in the function cache.
+struct FunctionCacheEntry {
+  size_t FuncIdx;
+  size_t NumSerBBs;
+};
+
 // The class responsible for serialising our IR into the interpreter binary.
 //
 // It walks over the LLVM IR, lowering each function, block, instruction, etc.
@@ -313,8 +342,8 @@ private:
   // File paths.
   vector<string> Paths;
 
-  llvm::DenseMap<llvm::Function *, size_t> FunctionCache;
-  llvm::DenseMap<llvm::BasicBlock *, size_t> BBCache;
+  llvm::DenseMap<llvm::Function *, FunctionCacheEntry> FunctionCache;
+  llvm::DenseMap<llvm::BasicBlock *, BBCacheEntry> BBCache;
 
   // Line-level debug line info for the instructions of the module.
   //
@@ -345,9 +374,19 @@ private:
     return Idx;
   }
 
-  size_t getIndex(Function *F) { return FunctionCache.at(F); }
+  size_t getIndex(Function *F) { return FunctionCache.at(F).FuncIdx; }
 
-  size_t getIndex(BasicBlock *BB) { return BBCache.at(BB); }
+  size_t getIndex(BasicBlock *BB) {
+    const BBCacheEntry &BCE = BBCache.at(BB);
+    // The serialiser should only every need to query indices of blocks with:
+    // - The `BBPurposeTracingCheck` purpose: because branches in the blocks
+    //   we serialise go to these kinds of block.
+    // - The `BBPurposeSerialise` purpose: because the incoming edges of PHI
+    //   nodes will go to these.
+    assert(BCE.Purpose == BBPurposeTracingCheck ||
+           BCE.Purpose == BBPurposeSerialise);
+    return BCE.BBIdx;
+  }
 
   // Return the index of the LLVM constant `C`, inserting a new entry if
   // necessary.
@@ -425,7 +464,6 @@ private:
   }
 
   void serialiseBlockLabel(BasicBlock *BB) {
-    // Basic block indices are the same in both LLVM IR and our IR.
     OutStreamer.emitSizeT(getIndex(BB));
   }
 
@@ -1465,7 +1503,10 @@ private:
     OutStreamer.emitSizeT(NumIncoming);
     // incoming_bbs:
     for (size_t J = 0; J < NumIncoming; J++) {
-      serialiseBlockLabel(I->getIncomingBlock(J));
+      BasicBlock *IB = I->getIncomingBlock(J);
+      const BBCacheEntry &IBCE = BBCache.at(IB);
+      assert(IBCE.Purpose == BBPurposeSerialise);
+      serialiseBlockLabel(IB);
     }
     // incoming_vals:
     for (size_t J = 0; J < NumIncoming; J++) {
@@ -1643,7 +1684,8 @@ private:
   }
 
   void serialiseBlock(BasicBlock &BB, FuncLowerCtxt &FLCtxt, unsigned &BBIdx,
-                      Function &F) {
+                      Function &F, std::vector<AllocaInst *> *EntryAllocas,
+                      std::vector<PHINode *> *PhiNodes) {
     auto ShouldSkipInstr = [](Instruction *I) {
       // Skip non-semantic instrucitons for now.
       //
@@ -1675,6 +1717,11 @@ private:
     // instrs:
     unsigned InstIdx = 0;
 
+    // Serialise any PHI nodes.
+    for (PHINode *PN : *PhiNodes) {
+      serialiseInst(PN, FLCtxt, BBIdx, InstIdx);
+    }
+
     // Insert LoadArg instructions for each argument of this function and
     // replace all Argument operands with their respective LoadArg instruction.
     // This ensures we won't have to deal with argument operands in the yk
@@ -1684,6 +1731,10 @@ private:
         serialiseLoadArg(Arg);
         FLCtxt.ArgumentMap[Arg] = InstIdx;
         InstIdx++;
+      }
+      // Serialise any entry block allocas.
+      for (AllocaInst *AI : *EntryAllocas) {
+        serialiseInst(AI, FLCtxt, BBIdx, InstIdx);
       }
     }
 
@@ -1771,13 +1822,47 @@ private:
     if ((!F.hasFnAttribute(YK_OUTLINE_FNATTR)) || (containsControlPoint(F))) {
       // Emit a function *definition*.
       // num_blocks:
-      OutStreamer.emitSizeT(F.size());
+      //
+      // Note, this is not the same as the number of blocks in the LLVM IR
+      // because we only serialise blocks that have the `BBPurposeSerialise`
+      // purpose.
+      OutStreamer.emitSizeT(FunctionCache.at(&F).NumSerBBs);
       // blocks:
       unsigned BBIdx = 0;
       FuncLowerCtxt FLCtxt;
       std::vector<Argument> V;
+      std::vector<AllocaInst *> EntryAllocas;
+      std::vector<PHINode *> PhiNodes;
       for (BasicBlock &BB : F) {
-        serialiseBlock(BB, FLCtxt, BBIdx, F);
+        const BBCacheEntry &BCE = BBCache.at(&BB);
+        // Cache entry block allocas that we have to serialise as though they
+        // appear in the the `BBPurposeSerialiseBB` block that will come later.
+        //
+        // Why didn't we just move the allocas into that block in the LLVM IR
+        // when we added software tracing instrumentation? Because then LLVM
+        // would consider the frame dynamically sized (because allocas exist
+        // that aren't in the entry block).
+        if (BB.isEntryBlock()) {
+          assert(BCE.Purpose == BBPurposeTracingCheck);
+          for (Instruction &I : BB) {
+            if (AllocaInst *AI = dyn_cast<AllocaInst>(&I)) {
+              EntryAllocas.push_back(AI);
+            }
+          }
+        }
+        // Similarly, cache PHI nodes (if any) at the start of any
+        // `BBPurposeTracingCheck` block. We will need to serialise those as
+        // though they appear in the `BBPurposeSerialise` block to follow.
+        if (BCE.Purpose == BBPurposeTracingCheck) {
+          for (Instruction &I : BB) {
+            if (PHINode *PN = dyn_cast<PHINode>(&I)) {
+              PhiNodes.push_back(PN);
+            }
+          }
+        } else if (BCE.Purpose == BBPurposeSerialise) {
+          serialiseBlock(BB, FLCtxt, BBIdx, F, &EntryAllocas, &PhiNodes);
+          PhiNodes.clear();
+        }
       }
       FLCtxt.patchLocalVarIdxs(OutStreamer);
     } else {
@@ -1968,6 +2053,72 @@ public:
   YkIRWriter(Module &M, MCStreamer &OutStreamer)
       : M(M), OutStreamer(OutStreamer), DL(&M) {}
 
+  // Return the purpose of a basic block.
+  BBPurpose getBBPurpose(BasicBlock *BB) {
+    if (MDNode *MD = BB->front().getMetadata("yk-swt-bb-purpose")) {
+      if (auto *S = dyn_cast<MDString>(MD->getOperand(0))) {
+        StringRef PS = S->getString();
+        if (PS == "swt-tracing-check-bb") {
+          return BBPurposeTracingCheck;
+        } else if (PS == "swt-record-bb") {
+          return BBPurposeRecord;
+        } else if (PS == "swt-serialise-bb") {
+          return BBPurposeSerialise;
+        } else {
+          llvm::report_fatal_error("encountered block with unknown purpose");
+        }
+      }
+    } else {
+      llvm::report_fatal_error("encountered block with no purpose: has the "
+                               "basic block racer pass been run?");
+    }
+    llvm_unreachable("failed to get bb purpose");
+  }
+
+  // Create the basic block cache and the function cache.
+  size_t createCaches() {
+    size_t FuncIdx = 0;
+    for (auto &F : M) {
+      size_t BBIdx = 0;
+      // Only make block cache entries for functions that can be traced.
+      if ((!F.hasFnAttribute(YK_OUTLINE_FNATTR)) || (containsControlPoint(F))) {
+        // The expected purpose of the next block.
+        BBPurpose Expect = BBPurposeTracingCheck;
+        std::optional<BasicBlock *> TracingCheckBB;
+        std::optional<BasicBlock *> RecordBB;
+        for (BasicBlock &BB : F) {
+          BBPurpose BP = getBBPurpose(&BB);
+          assert(BP == Expect);
+          switch (BP) {
+          case BBPurposeTracingCheck:
+            assert(!TracingCheckBB.has_value());
+            TracingCheckBB = &BB;
+            Expect = BBPurposeRecord;
+            break;
+          case BBPurposeRecord:
+            assert(!RecordBB.has_value());
+            RecordBB = &BB;
+            Expect = BBPurposeSerialise;
+            break;
+          case BBPurposeSerialise:
+            BBCache[TracingCheckBB.value()] =
+                BBCacheEntry{BBPurposeTracingCheck, BBIdx, &BB};
+            BBCache[RecordBB.value()] =
+                BBCacheEntry{BBPurposeRecord, BBIdx, &BB};
+            BBCache[&BB] = BBCacheEntry{BBPurposeSerialise, BBIdx, &BB};
+            Expect = BBPurposeTracingCheck;
+            TracingCheckBB = nullopt;
+            RecordBB = nullopt;
+            BBIdx++;
+            break;
+          }
+        }
+      }
+      FunctionCache[&F] = {FuncIdx++, BBIdx};
+    }
+    return FuncIdx;
+  }
+
   // Entry point for IR serialisation.
   //
   // The order of serialisation matters.
@@ -1986,17 +2137,9 @@ public:
     assert(IdxBitWidth <= 0xff);
     OutStreamer.emitInt8(IdxBitWidth);
 
-    // Precompute func and bb indices
-    size_t FuncIdx = 0;
-    for (auto &F : M) {
-      FunctionCache[&F] = FuncIdx++;
-      size_t BBIdx = 0;
-      for (BasicBlock &BB : F) {
-        BBCache[&BB] = BBIdx++;
-      }
-    }
+    size_t NumFuncs = createCaches();
     // Emit the number of functions
-    OutStreamer.emitSizeT(FuncIdx);
+    OutStreamer.emitSizeT(NumFuncs);
     // funcs:
     for (llvm::Function &F : M) {
       serialiseFunc(F);

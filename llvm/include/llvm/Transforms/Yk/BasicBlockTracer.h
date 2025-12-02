@@ -6,6 +6,9 @@
 // The name of the trace function - used in swt tracing.
 #define YK_TRACE_FUNCTION "__yk_trace_basicblock"
 
+// The name of the thread tracing state thread local.
+#define YK_THREAD_TRACING_STATE_TL "__yk_thread_tracing_state"
+
 // The name of the dummy (noop) trace function - used in multi-module swt
 // tracing.
 #define YK_TRACE_FUNCTION_DUMMY "__yk_trace_basicblock_dummy"
