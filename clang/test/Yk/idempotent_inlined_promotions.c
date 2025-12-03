@@ -1,7 +1,7 @@
 // Checks the compiler borks if a __yk_promote_* gets inlined into a
 // yk_idempotent function.
 //
-// RUN: not %clang -O2 -mllvm --yk-embed-ir -mllvm --yk-insert-stackmaps %s 2>&1 | FileCheck %s
+// RUN: not %clang -O2 -mllvm --yk-embed-ir -mllvm --yk-insert-stackmaps -mllvm --yk-basicblock-tracer %s 2>&1 | FileCheck %s
 
 void *__yk_promote_ptr(void *);
 

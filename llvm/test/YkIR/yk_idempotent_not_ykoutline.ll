@@ -1,7 +1,7 @@
 ; Checks the compiler borks if there's a __yk_promote_* in a yk_outline
 ; function.
 ;
-; RUN: not llc --yk-embed-ir < %s 2>&1 | FileCheck %s
+; RUN: not llc --yk-embed-ir --yk-basicblock-tracer < %s 2>&1 | FileCheck %s
 
 declare ptr @__yk_promote_ptr(ptr)
 
