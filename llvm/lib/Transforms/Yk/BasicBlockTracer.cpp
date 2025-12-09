@@ -68,13 +68,13 @@ struct YkBasicBlockTracer : public ModulePass {
       ThreadTracingTL->setAlignment(Align(1));
     }
 
-    // Trace function is used to trace the execution of the program.
+    // Declare the basic block recorder function.
+    //
+    // The sole argument is a 16-bit function index and a 16-bit basic block
+    // index packed into a 32-bit integer.
     Type *ReturnType = Type::getVoidTy(Context);
-    Type *FunctionIndexArgType = Type::getInt32Ty(Context);
-    Type *BlockIndexArgType = Type::getInt32Ty(Context);
-
-    FunctionType *FType = FunctionType::get(
-        ReturnType, {FunctionIndexArgType, BlockIndexArgType}, false);
+    Type *ArgType = Type::getInt32Ty(Context);
+    FunctionType *FType = FunctionType::get(ReturnType, {ArgType}, false);
     Function *TraceFuncInner = Function::Create(
         FType, GlobalVariable::ExternalLinkage, YK_TRACE_FUNCTION, M);
 
@@ -177,10 +177,16 @@ struct YkBasicBlockTracer : public ModulePass {
 
         // Make the block that calls the recorder.
         BasicBlock *RecBB = llvm::BasicBlock::Create(Context, "", &F, RestBB);
+        if (FunctionIndex > UINT16_MAX) {
+          llvm::report_fatal_error("function index exceeded limit");
+        }
+        if (BlockIndex > UINT16_MAX) {
+          llvm::report_fatal_error("block index exceeded limit");
+        }
+        uint64_t Arg =
+            (static_cast<uint32_t>(FunctionIndex) << 16) | BlockIndex;
         Builder.SetInsertPoint(RecBB);
-        CallInst *CI =
-            Builder.CreateCall(TraceFunc, {Builder.getInt32(FunctionIndex),
-                                           Builder.getInt32(BlockIndex)});
+        CallInst *CI = Builder.CreateCall(TraceFunc, {Builder.getInt32(Arg)});
         CI->setCallingConv(llvm::CallingConv::PreserveAll);
         Builder.CreateBr(RestBB);
 
