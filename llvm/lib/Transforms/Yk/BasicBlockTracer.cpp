@@ -75,8 +75,27 @@ struct YkBasicBlockTracer : public ModulePass {
 
     FunctionType *FType = FunctionType::get(
         ReturnType, {FunctionIndexArgType, BlockIndexArgType}, false);
-    Function *TraceFunc = Function::Create(
+    Function *TraceFuncInner = Function::Create(
         FType, GlobalVariable::ExternalLinkage, YK_TRACE_FUNCTION, M);
+
+    // Define the trace recorder wrapper.
+    //
+    // We use a wrapper so we can use an ABI that disrupts register allocation
+    // in the interpreter code to a lesser extent. The wrapper is required
+    // because the actual recorder function is defined in the JIT runtime's
+    // shared object and we can't change the ABI for library calls.
+    llvm::Function *TraceFunc = Function::Create(
+        FType, llvm::Function::InternalLinkage, YK_TRACE_FUNCTION_WRAPPER, M);
+    TraceFunc->setCallingConv(llvm::CallingConv::PreserveAll);
+    TraceFunc->addFnAttr(YK_OUTLINE_FNATTR);
+    llvm::BasicBlock *WrapperBB = BasicBlock::Create(Context, "", TraceFunc);
+    IRBuilder<> Builder(WrapperBB);
+    std::vector<Value *> InnerArgs;
+    for (Argument &A : TraceFunc->args()) {
+      InnerArgs.push_back(&A);
+    }
+    Builder.CreateCall(TraceFuncInner, InnerArgs);
+    Builder.CreateRetVoid();
 
     // Metadata used to help the serialiser identify the purpose of a block.
     //
@@ -90,7 +109,6 @@ struct YkBasicBlockTracer : public ModulePass {
     MDNode *SerialiseBBMD =
         MDNode::get(Context, MDString::get(Context, "swt-serialise-bb"));
 
-    IRBuilder<> Builder(Context);
     uint32_t FunctionIndex = 0;
     for (auto &F : M) {
       // If we won't ever trace this, don't insert calls to the tracer, as it
@@ -160,8 +178,10 @@ struct YkBasicBlockTracer : public ModulePass {
         // Make the block that calls the recorder.
         BasicBlock *RecBB = llvm::BasicBlock::Create(Context, "", &F, RestBB);
         Builder.SetInsertPoint(RecBB);
-        Builder.CreateCall(TraceFunc, {Builder.getInt32(FunctionIndex),
-                                       Builder.getInt32(BlockIndex)});
+        CallInst *CI =
+            Builder.CreateCall(TraceFunc, {Builder.getInt32(FunctionIndex),
+                                           Builder.getInt32(BlockIndex)});
+        CI->setCallingConv(llvm::CallingConv::PreserveAll);
         Builder.CreateBr(RestBB);
 
         // Update the terminator of the "are we tracing?" block We jump over
