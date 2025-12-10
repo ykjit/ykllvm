@@ -147,8 +147,9 @@ struct YkBasicBlockTracer : public ModulePass {
         } else {
           Builder.SetInsertPoint(&*BB->getFirstInsertionPt());
         }
-        Instruction *ThreadTracingState =
+        LoadInst *ThreadTracingState =
             Builder.CreateLoad(I8Ty, ThreadTracingTL);
+        ThreadTracingState->setAtomic(llvm::AtomicOrdering::Monotonic);
         Value *DontRec = Builder.CreateICmpEQ(
             ThreadTracingState, ConstantInt::get(I8Ty, ThreadTracingStateNone));
 
