@@ -10,7 +10,6 @@
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
-#include "llvm/Transforms/Yk/ModuleClone.h"
 #include "llvm/YkIR/YkIRWriter.h"
 
 #define DEBUG_TYPE "yk-mark-traceable-optnone"
@@ -32,9 +31,7 @@ public:
   bool runOnModule(Module &M) override {
     bool Changed = false;
     for (Function &F : M) {
-      if (F.getMetadata(YK_SWT_OPT_MD)) {
-        continue;
-      }
+      // Skip anything untraceable.
       if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
         continue;
       }

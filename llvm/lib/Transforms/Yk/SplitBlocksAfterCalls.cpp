@@ -8,18 +8,15 @@
 #include "llvm/Transforms/Yk/SplitBlocksAfterCalls.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
-#include "llvm/Transforms/Yk/LivenessAnalysis.h"
-#include "llvm/Transforms/Yk/ModuleClone.h"
 #include "llvm/YkIR/YkIRWriter.h"
 
-#include <map>
+#include <set>
 
 #define DEBUG_TYPE "yk-splitblocksaftercalls"
 
@@ -47,9 +44,6 @@ public:
 
       // If we won't trace this function, no need for this transformation.
       if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
-        continue;
-      }
-      if (F.getMetadata(YK_SWT_OPT_MD)) {
         continue;
       }
 

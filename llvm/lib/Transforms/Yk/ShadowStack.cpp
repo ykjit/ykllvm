@@ -95,10 +95,7 @@
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
-#include "llvm/Transforms/Yk/ModuleClone.h"
 #include "llvm/YkIR/YkIRWriter.h"
-
-#include <map>
 
 #define DEBUG_TYPE "yk-shadow-stack-pass"
 #define YK_MT_NEW "yk_mt_new"
@@ -402,9 +399,6 @@ public:
         // skip declarations.
         continue;
       }
-      if (F.getMetadata(YK_SWT_OPT_MD)) {
-        continue;
-      }
       // skip already handled main and unopt functions
       if (F.getName() == MAIN) {
         continue;
@@ -413,11 +407,6 @@ public:
       if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
         continue;
       }
-      // skip optimised clones.
-      if (F.getMetadata(YK_SWT_OPT_MD)) {
-        continue;
-      }
-      assert(F.getMetadata(YK_SWT_OPT_MD) == nullptr);
 
       AllocaVector Allocas;
       std::vector<ReturnInst *> Rets;

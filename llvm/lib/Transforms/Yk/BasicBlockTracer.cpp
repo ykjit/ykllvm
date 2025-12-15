@@ -31,8 +31,8 @@
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
-#include "llvm/Transforms/Yk/ModuleClone.h"
 #include "llvm/YkIR/YkIRWriter.h"
+
 #define DEBUG_TYPE "yk-basicblock-tracer-pass"
 
 const uint8_t ThreadTracingStateNone = 0;
@@ -115,10 +115,6 @@ struct YkBasicBlockTracer : public ModulePass {
       // would only slow us down.
       if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
         FunctionIndex++;
-        continue;
-      }
-      // Don't insert basic block tracing calls into optimised clones.
-      if (F.getMetadata(YK_SWT_OPT_MD)) {
         continue;
       }
 
