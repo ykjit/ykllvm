@@ -79,9 +79,6 @@ public:
       if (F.hasFnAttribute(YK_OUTLINE_FNATTR) && !containsControlPoint(F)) {
         continue;
       }
-      if (F.getMetadata(YK_SWT_OPT_MD)) {
-        continue;
-      }
       for (BasicBlock &BB : F) {
         for (Instruction &I : BB) {
           if (CallBase *CI = dyn_cast<CallBase>(&I)) {

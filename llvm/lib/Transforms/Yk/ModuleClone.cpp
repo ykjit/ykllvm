@@ -9,6 +9,8 @@
 // Once an optimised clone has been created, we then rewrite all calls inside
 // to call optimised versions of callees (where possible).
 //
+// All optimised clones are marked `yk_outline`.
+//
 // Sometimes we are unable to clone a function. For example when a function has
 // its address taken. Cloning such a function would break "function pointer
 // identity", which the program may be relying on.
@@ -167,7 +169,7 @@ void ModuleClonePass::updateCalls(std::map<Function *, Function *> &CloneMap,
   // existent) in optimised clones and functions marked yk_outline. Since the
   // caller can't be traced, neither can the callee.
   for (Function &F : M) {
-    // If it's not a yk_outline functiion, then it could be traced, and we
+    // If it's not a yk_outline function, then it could be traced, and we
     // shouldn't update the callees.
     if (!F.hasFnAttribute(YK_OUTLINE_FNATTR)) {
       continue;
@@ -209,6 +211,13 @@ PreservedAnalyses ModuleClonePass::run(Module &M, ModuleAnalysisManager &MAM) {
 
   if (verifyModule(M, &errs())) {
     Context.emitError("Module verification failed!");
+  }
+
+  // Be absolutely sure that all cloned functions are yk_outline.
+  for (Function &F : M) {
+    if (F.getMetadata(YK_SWT_OPT_MD)) {
+      assert(F.hasFnAttribute(YK_OUTLINE_FNATTR));
+    }
   }
 
   return PreservedAnalyses::none();

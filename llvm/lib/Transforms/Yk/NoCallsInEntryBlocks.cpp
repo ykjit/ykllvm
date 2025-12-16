@@ -41,14 +41,15 @@
 #include "llvm/Transforms/Yk/NoCallsInEntryBlocks.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
-#include "llvm/Transforms/Yk/LivenessAnalysis.h"
-#include "llvm/Transforms/Yk/ModuleClone.h"
+#include "llvm/Transforms/Yk/ControlPoint.h"
+#include "llvm/YkIR/YkIRWriter.h"
+
+#include <set>
 
 #define DEBUG_TYPE "yk-no-more-entryblock-calls"
 
@@ -75,7 +76,8 @@ public:
     for (Function &F : M) {
       if (F.empty()) // skip declarations.
         continue;
-      if (F.getMetadata(YK_SWT_OPT_MD)) {
+      // skip functions that aren't traceable
+      if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
         continue;
       }
       BasicBlock &BB = F.getEntryBlock();
