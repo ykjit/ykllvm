@@ -13,7 +13,8 @@
 //
 // Sometimes we are unable to clone a function. For example when a function has
 // its address taken. Cloning such a function would break "function pointer
-// identity", which the program may be relying on.
+// identity", which the program may be relying on. In this case, we mark the
+// original function as yk_outline to prevent tracing calls from being added.
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Yk/ModuleClone.h"
@@ -28,6 +29,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/Debug.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
 #include "llvm/YkIR/YkIRWriter.h"
@@ -56,11 +58,7 @@ bool ModuleClonePass::shouldClone(Function &F) {
   if (F.isDeclaration()) {
     return false;
   }
-  // If the address of a function is taken, then cloning it would break
-  // function pointer identity, which the program may rely on.
-  if (F.hasAddressTaken()) {
-    return false;
-  }
+  // Note: address-taken functions are handled separately in cloneFunctionsInModule.
   // For now we don't clone functions that contain a call to the control
   // point.
   if (containsControlPoint(F)) {
@@ -84,6 +82,18 @@ ModuleClonePass::cloneFunctionsInModule(Module &M) {
   std::map<Function *, Function *> CloneMap;
   for (Function *F : Funcs) {
     auto OrigName = F->getName().str();
+
+    // If the address of a function is taken, then cloning it would break
+    // function pointer identity, which the program may rely on. We mark the
+    // original as yk_outline to prevent tracing calls from being added.
+    if (F->hasAddressTaken()) {
+      // Debug print
+      // errs() << "yk-module-clone: address-taken function: " << F->getName() << "\n";
+      F->addFnAttr(YK_OUTLINE_FNATTR);
+      F->setMetadata(YK_SWT_OPT_MD, OptMD);
+      CloneMap[F] = nullptr;
+      continue;
+    }
 
     // Maybe clone the function.
     Function *ClonedOptFunc = nullptr;
