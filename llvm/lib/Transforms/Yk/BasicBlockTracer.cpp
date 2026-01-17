@@ -56,6 +56,10 @@ struct YkBasicBlockTracer : public ModulePass {
 
     // Declare the thread tracing state thread local (if not already present --
     // the input program could have already defined it extern).
+    //
+    // We use InitialExecTLSModel for performance: it generates a direct FS segment
+    // load (~4 cycles) instead of calling __tls_get_addr (~30 cycles). This works
+    // because libykcapi.so is linked at program startup, not dlopen()'d.
     llvm::Type *I8Ty = llvm::Type::getInt8Ty(Context);
     GlobalVariable *ThreadTracingTL =
         M.getNamedGlobal(YK_THREAD_TRACING_STATE_TL);
@@ -64,7 +68,7 @@ struct YkBasicBlockTracer : public ModulePass {
           M, I8Ty, false, llvm::GlobalValue::ExternalLinkage, nullptr,
           YK_THREAD_TRACING_STATE_TL);
       ThreadTracingTL->setThreadLocalMode(
-          llvm::GlobalValue::GeneralDynamicTLSModel);
+          llvm::GlobalValue::InitialExecTLSModel);
       ThreadTracingTL->setAlignment(Align(1));
     }
 
