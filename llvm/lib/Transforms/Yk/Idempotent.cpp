@@ -62,8 +62,11 @@ public:
         return RecF; // already declared.
       } else {
         FunctionType *RecFType = FunctionType::get(ITy, {ITy}, false);
-        return Function::Create(RecFType, GlobalVariable::ExternalLinkage,
-                                RecFName, M);
+        Function *NewRecF = Function::Create(RecFType, GlobalVariable::ExternalLinkage,
+                                             RecFName, M);
+        // Use NonLazyBind to avoid PLT indirection, reducing call overhead.
+        NewRecF->addFnAttr(Attribute::NonLazyBind);
+        return NewRecF;
       }
     } else {
       return nullptr;
