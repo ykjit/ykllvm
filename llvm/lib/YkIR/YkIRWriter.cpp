@@ -969,7 +969,7 @@ private:
   void serialiseBranchInst(BranchInst *I, FuncLowerCtxt &FLCtxt, unsigned BBIdx,
                            unsigned &InstIdx) {
     // We split LLVM's `br` into two Yk IR instructions: one for unconditional
-    // branching, another for conidtional branching.
+    // branching, another for conditional branching.
     if (!I->isConditional()) {
       // We don't serialise the branch target for unconditional branches because
       // traces will guide us.
