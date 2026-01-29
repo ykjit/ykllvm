@@ -26,7 +26,6 @@
 #include "llvm/CodeGen/MachineValueType.h"
 #include "llvm/CodeGen/StackMaps.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
-#include "llvm/ADT/YkDisjointLocationSets.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Mangler.h"
@@ -51,6 +50,7 @@
 
 #include <map>
 #include <cstdint>
+#include <set>
 
 using namespace llvm;
 extern bool YkStackMapAdditionalLocs;
@@ -66,6 +66,31 @@ X86AsmPrinter::X86AsmPrinter(TargetMachine &TM,
 const TargetInstrInfo *TII;
 const TargetRegisterInfo *TRI;
 const MCRegisterInfo *MRI;
+
+/// Clear any mappings that map to the given register.
+void clearRhs(Register Reg, std::map<Register, std::set<int64_t>> &SpillMap) {
+  auto I = SpillMap.begin();
+  while (I != SpillMap.end()) {
+    I->second.erase(Reg);
+    ++I;
+  }
+}
+
+void clearOffset(unsigned int Reg, int Offset, std::map<Register, std::set<int64_t>> &SpillMap) {
+  auto I = SpillMap.begin();
+  while (I != SpillMap.end()) {
+    if (I->second.count(Reg) == 0) {
+      I->second.erase(Offset);
+    }
+    ++I;
+  }
+}
+
+/// Remove all mentions of the DWARF register `DwReg` from `SpillMap`.
+void killRegister(const Register DwReg, std::map<Register, std::set<int64_t>> &SpillMap) {
+    SpillMap.erase(DwReg);
+    clearRhs(DwReg, SpillMap);
+}
 
 /// Go up the super-register chain until we hit a valid dwarf register number.
 ///
@@ -83,19 +108,21 @@ int getDwarfRegNumFallible(unsigned Reg, const TargetRegisterInfo *TRI) {
   return RegNum;
 }
 
-/// Given a MachineBasicBlock, analyse its instructions and try to figure out
-/// which locations (registers/stack slots) contain copies of the same value.
+/// Given a MachineBasicBlock, analyse its instructions to build a mapping of
+/// where duplicate values live. This can be either in another register or on
+/// the stack. Since registers are always positive and stack offsets negative,
+/// we can store both in the same map while still being able to distinguish
+/// them. This allows us to keep the changes in Stackmaps.cpp to a minimum and
+/// avoids having to alter the stackmap format.
 ///
-/// Locations are encoded as a signed integer, where a value >=0 is a DWARF
-/// register number, and value <0 is a rbp-based stack offset.
-///
-/// Note that:
-///  - we don't track non-rbp-based memory loads/stores, e.g. `mov [rax], ...`.
-///  - stack slots are assumed to be non-overlapping.
+/// FIXME: the algorithm is implemented with hashmaps which makes it more
+/// complicated than it needs to be. We think this would be better implemented
+/// using union find to store disjoint sets of "alised" locations.
+/// https://github.com/ykjit/yk/issues/1602
 void processInstructions(
     const MachineBasicBlock *MBB,
-    DisjointLocationSets &SpillMap,
-    std::map<const MachineInstr *, DisjointLocationSets> &StackmapSpillMaps
+    std::map<Register, std::set<int64_t>> &SpillMap,
+    std::map<const MachineInstr *, std::map<Register, std::set<int64_t>>> &StackmapSpillMaps
   ) {
   for (const MachineInstr &Instr : MBB->instrs()) {
     // At each stackmap call, save the current mapping so it can later be
@@ -105,7 +132,7 @@ void processInstructions(
       for (const MachineOperand MO : Instr.uses()) {
         if (MO.isReg() && MO.isKill()) {
           auto DwReg = getDwarfRegNum(MO.getReg(), TRI);
-          SpillMap.makeDistinct(DwReg);
+          killRegister(DwReg, SpillMap);
         }
       }
       continue;
@@ -125,11 +152,19 @@ void processInstructions(
         // Moves like `mov rax, rax` are effectively a NOP for this analysis.
         continue;
       }
-      // `Rhs` is moved into `Lhs`.
-      SpillMap.unifyWith(LhsDwReg, RhsDwReg);
-      assert(!Lhs.isKill());
+      // Reassigning a new value to LHS means any mappings to Lhs are now void
+      // and need to be removed. We need to do this before updating the
+      // mapping, so the transitive property of the SpillMap isn't violated
+      // (see `clearRhs` for more info).
+      clearRhs(LhsDwReg, SpillMap);
+      SpillMap[LhsDwReg] = {RhsDwReg};
+      // Transitively apply the mappings of `Rhs` to this mapping too.
+      std::set<int64_t> Other = SpillMap[RhsDwReg];
+      SpillMap[LhsDwReg].insert(Other.begin(), Other.end());
+      // Also add Lhs to the mapping of Rhs.
+      SpillMap[RhsDwReg].insert(LhsDwReg);
       if (Rhs.isKill()) {
-        SpillMap.makeDistinct(RhsDwReg);
+        killRegister(RhsDwReg, SpillMap);
       }
       continue;
     }
@@ -144,11 +179,21 @@ void processInstructions(
       const Register DwReg = getDwarfRegNum(MO.getReg(), TRI);
       if (OffsetOp.isImm()) {
         const int64_t Offset = OffsetOp.getImm();
-        // `DwReg` is moved into the stack `Offset`.
-        SpillMap.unifyWith(Offset, DwReg);
+        // We don't need to do `clearRhs(DwReg)` and reset the `SpillMap` entry
+        // here since the store, unlike the load and move, doesn't overwrite
+        // the register. We do, however, now need to remove all previous
+        // mappings to this offset (unless the other mapping contains `DwReg`).
+        clearOffset(DwReg, Offset, SpillMap);
+        for (int64_t Rhs : SpillMap[DwReg]) {
+          // Apply offset transitively to the other mappings.
+          if (Rhs >= 0) {
+            SpillMap[Rhs].insert(Offset);
+          }
+        }
+        SpillMap[DwReg].insert(Offset);
       }
       if (MO.isKill()) {
-        SpillMap.makeDistinct(DwReg);
+        killRegister(DwReg, SpillMap);
       }
       continue;
     }
@@ -162,8 +207,8 @@ void processInstructions(
       const Register DwReg = getDwarfRegNum(Lhs.getReg(), TRI);
       if (OffsetOp.isImm()) {
         const int64_t Offset = OffsetOp.getImm();
-        // The data at the stack offset was copied into the register.
-        SpillMap.unifyWith(DwReg, Offset);
+        clearRhs(DwReg, SpillMap);
+        SpillMap[DwReg] = {Offset};
       }
       // Can it happen? (it'd be a dead load).
       assert(!Lhs.isKill());
@@ -185,7 +230,7 @@ void processInstructions(
         // speak DWARF, but these registers have no DWARF number. Eek!
         continue;
       }
-      SpillMap.makeDistinct(DwReg);
+      killRegister(DwReg, SpillMap);
     }
 
     // Delete registers that are "killed" (no longer live) after this
@@ -197,7 +242,7 @@ void processInstructions(
       if (MO.isReg() && (MO.isKill() || MO.isDef())) {
         int DwReg = getDwarfRegNumFallible(MO.getReg(), TRI);
         if (DwReg >= 0) {
-          SpillMap.makeDistinct(DwReg);
+          killRegister(DwReg, SpillMap);
         }
       }
     }
@@ -232,9 +277,9 @@ void processInstructions(
 /// YKFIXME: Can be updated to use an iterative approach.
 void findSpillLocations(
     const MachineBasicBlock *MBB,
-    std::map<const MachineBasicBlock *, DisjointLocationSets> &MBSpillMaps,
-    DisjointLocationSets SpillMap,
-    std::map<const MachineInstr *, DisjointLocationSets> &StackmapSpillMaps
+    std::map<const MachineBasicBlock *, std::map<Register, std::set<int64_t>>> &MBSpillMaps,
+    std::map<Register, std::set<int64_t>> SpillMap,
+    std::map<const MachineInstr *, std::map<Register, std::set<int64_t>>> &StackmapSpillMaps
     ) {
 
   int Changed = false;
@@ -249,7 +294,20 @@ void findSpillLocations(
     auto PrevSM = Val->second;
     for (auto LiveIn = MBB->livein_begin(); LiveIn != MBB->livein_end(); LiveIn++) {
       auto DwReg = getDwarfRegNum(Register((*LiveIn).PhysReg), TRI);
-      Changed |= SpillMap.intersectSetsContaining(DwReg, PrevSM);
+      auto Prev = PrevSM[DwReg];
+      auto New = SpillMap[DwReg];
+      std::set<int64_t> Inter;
+      std::set_intersection(
+          Prev.begin(), Prev.end(),
+          New.begin(), New.end(),
+          std::inserter(Inter, Inter.begin())
+      );
+      if (Prev != Inter) {
+        // The mappings have changed, so update the running spill map and make
+        // sure we re-process all predecessors.
+        SpillMap[DwReg] = Inter;
+        Changed = true;
+      }
     }
   } else {
     // We are processing this block for the first time.
@@ -298,8 +356,8 @@ bool X86AsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   // Analyse control flow to find out the location of register spills to the
   // stack or to other registers, so we can also encode those in stackmaps.
   TII = MF.getSubtarget().getInstrInfo();
-  DisjointLocationSets SpillMap;
-  std::map<const MachineBasicBlock *, DisjointLocationSets> MBSpillMaps;
+  std::map<Register, std::set<int64_t>> SpillMap;
+  std::map<const MachineBasicBlock *, std::map<Register, std::set<int64_t>>> MBSpillMaps;
 
   // If we are using Yk JIT and it's something that we could trace, compute the
   // additional locations for stackmaps.

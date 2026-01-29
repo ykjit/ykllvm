@@ -20,7 +20,6 @@
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
-#include "llvm/ADT/YkDisjointLocationSets.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -227,7 +226,7 @@ MachineInstr::const_mop_iterator
 StackMaps::parseOperand(MachineInstr::const_mop_iterator MOI,
                         MachineInstr::const_mop_iterator MOE,
                         LiveVarsVec &LiveVars, LiveOutVec &LiveOuts,
-                        DisjointLocationSets SpillOffsets,
+                        std::map<Register, std::set<int64_t>> SpillOffsets,
                         std::set<int64_t> TrackedRegisters) const {
   LocationVec &Locs = LiveVars.back();
   const TargetRegisterInfo *TRI = AP.MF->getSubtarget().getRegisterInfo();
@@ -252,19 +251,16 @@ StackMaps::parseOperand(MachineInstr::const_mop_iterator MOI,
       assert(Size > 0 && "Need a valid size for indirect memory locations.");
       Register Reg = (++MOI)->getReg();
       int64_t Imm = (++MOI)->getImm();
-      // Check if a copy of this indirect location exists in a register. If so
-      // track the register instead.
-      std::set<int64_t> Others = SpillOffsets.getOthersInSet(Imm);
-      for (const int64_t &L: Others) {
-        if (L > 0) {
-          // It's a register, use that.
-          //
-          // Take a copy to avoid iterator invalidation!
-          std::set<int64_t> Extras = Others;
-          Extras.erase(L);
-          Extras.insert(Imm);
-          Locs.emplace_back(Location::Register, Size, L, 0, Extras);
-          return ++MOI;
+      // Check if this indirect location aliases with a register. If so track
+      // the register instead alongside any extra locations attached to that
+      // register (by definition this indirect will be included in those extra
+      // locations).
+      for (auto [TrackReg, Extras]: SpillOffsets) {
+        for (auto E : Extras) {
+          if (E == Imm) {
+            Locs.emplace_back(Location::Register, Size, TrackReg, 0, Extras);
+            return ++MOI;
+          }
         }
       }
       Locs.emplace_back(StackMaps::Location::Indirect, Size,
@@ -326,7 +322,12 @@ StackMaps::parseOperand(MachineInstr::const_mop_iterator MOI,
     Register DwarfRegNum = getDwarfRegNum(R, TRI);
     std::set<int64_t> Extras;
     if (MOI->isReg()) {
-      Extras = SpillOffsets.getOthersInSet(DwarfRegNum);
+      if (SpillOffsets.count(DwarfRegNum) > 0) {
+        Extras = SpillOffsets[DwarfRegNum];
+        // YKOPT: We could eliminate duplicate deopts here to take pressure off
+        // the runtime deopt routine. There is an (unsound) attempt at this in
+        // the git history (it killed too many memory deopts).
+      }
     }
 
     unsigned LLVMRegNum = *TRI->getLLVMRegNum(DwarfRegNum, false);
@@ -565,7 +566,7 @@ void StackMaps::recordStackMapOpers(const MCSymbol &MILabel,
                                     const MachineInstr &MI, uint64_t ID,
                                     MachineInstr::const_mop_iterator MOI,
                                     MachineInstr::const_mop_iterator MOE,
-                                    DisjointLocationSets SpillOffsets,
+                                    std::map<Register, std::set<int64_t>> SpillOffsets,
                                     bool recordResult) {
   MCContext &OutContext = AP.OutStreamer->getContext();
 
@@ -687,7 +688,7 @@ void StackMaps::recordStackMapOpers(const MCSymbol &MILabel,
 
 void StackMaps::recordStackMap(const MCSymbol &L,
                                const MachineInstr &MI,
-                               DisjointLocationSets SpillOffsets) {
+                               std::map<Register, std::set<int64_t>> SpillOffsets) {
   assert(MI.getOpcode() == TargetOpcode::STACKMAP && "expected stackmap");
 
   StackMapOpers opers(&MI);
@@ -699,7 +700,7 @@ void StackMaps::recordStackMap(const MCSymbol &L,
 
 void StackMaps::recordPatchPoint(
     const MCSymbol &L, const MachineInstr &MI,
-    DisjointLocationSets SpillOffsets) {
+    std::map<Register, std::set<int64_t>> SpillOffsets) {
   assert(MI.getOpcode() == TargetOpcode::PATCHPOINT && "expected patchpoint");
 
   PatchPointOpers opers(&MI);

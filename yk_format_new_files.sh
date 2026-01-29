@@ -13,11 +13,7 @@
 
 set -e
 
-# Directories where every file is yk-specific and should be formatted.
 YK_DIRS="./clang/test/Yk ./llvm/lib/Transforms/Yk ./llvm/include/llvm/Transforms/Yk llvm/lib/YkIR ./llvm/lib/CodeGen/Yk"
-
-# Individual files that are yk-specific and should be formatted.
-YK_FILES="./llvm/include/llvm/ADT/YkDisjointLocationSets.h"
 
 if ./build/bin/clang-format -version > /dev/null 2>&1; then
     clang_format=./build/bin/clang-format
@@ -35,8 +31,4 @@ echo "Using $clang_format"
 for dir in ${YK_DIRS}; do
     find ${dir} -type f -iname '*.cpp' -or -iname '*.h' -or -iname '*.c' | \
         xargs ${clang_format} -i
-done
-
-for f in ${YK_FILES}; do
-        ${clang_format} -i $f
 done
