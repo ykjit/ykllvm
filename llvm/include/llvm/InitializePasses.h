@@ -345,6 +345,7 @@ void initializeYkStackmapsPass(PassRegistry&);
 void initializeYkSplitBlocksAfterCallsPass(PassRegistry&);
 void initializeYkBasicBlockTracerPass(PassRegistry&);
 void initializeYkShadowStackPass(PassRegistry&);
+void initializeYkConditionalPromoteCallsPass(PassRegistry&);
 void initializeYkModuleClonePass(PassRegistry&);
 } // end namespace llvm
 

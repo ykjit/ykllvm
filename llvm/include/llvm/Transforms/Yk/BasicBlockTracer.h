@@ -16,7 +16,16 @@
 
 namespace llvm {
 
+class GlobalVariable;
+class Module;
+
 ModulePass *createYkBasicBlockTracerPass();
+
+/// Get or create the __yk_thread_tracing_state thread-local variable.
+/// This TLS variable is shared between ConditionalPromoteCalls and
+/// BasicBlockTracer passes to check whether tracing is active.
+GlobalVariable *getOrCreateThreadTracingState(Module &M);
+
 } // namespace llvm
 
 #endif

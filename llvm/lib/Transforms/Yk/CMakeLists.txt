@@ -12,6 +12,7 @@ add_llvm_component_library(LLVMYkPasses
   BasicBlockTracer.cpp
   ModuleClone.cpp
   MarkTraceableOptNone.cpp
+  ConditionalPromoteCalls.cpp
 
   DEPENDS
   intrinsics_gen

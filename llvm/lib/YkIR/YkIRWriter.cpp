@@ -25,6 +25,7 @@
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Transforms/Yk/ConditionalPromoteCalls.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
 #include "llvm/Transforms/Yk/Idempotent.h"
 #include "llvm/Transforms/Yk/ModuleClone.h"
@@ -281,7 +282,7 @@ public:
   bool vlMapContains(Instruction *I) { return VLMap.count(I) == 1; }
 };
 
-// Idenitfies the "purpose" of a basic block.
+// Identifies the "purpose" of a basic block (from BasicBlockTracer).
 enum BBPurpose {
   // This block is a "is the current thread tracing?" check.
   BBPurposeTracingCheck,
@@ -290,6 +291,17 @@ enum BBPurpose {
   // This block is serialised (into yk AOT IR).
   BBPurposeSerialise,
 };
+
+// Check if an instruction has a specific promote block purpose metadata
+// (from ConditionalPromoteCalls).
+bool hasPromotePurpose(Instruction *I, const char *Purpose) {
+  if (MDNode *MD = I->getMetadata(YK_PROMOTE_BB_PURPOSE_MD)) {
+    if (auto *S = dyn_cast<MDString>(MD->getOperand(0))) {
+      return S->getString() == Purpose;
+    }
+  }
+  return false;
+}
 
 // An entry in the basic block cache.
 struct BBCacheEntry {
@@ -969,7 +981,7 @@ private:
   void serialiseBranchInst(BranchInst *I, FuncLowerCtxt &FLCtxt, unsigned BBIdx,
                            unsigned &InstIdx) {
     // We split LLVM's `br` into two Yk IR instructions: one for unconditional
-    // branching, another for conidtional branching.
+    // branching, another for conditional branching.
     if (!I->isConditional()) {
       // We don't serialise the branch target for unconditional branches because
       // traces will guide us.
@@ -1686,8 +1698,29 @@ private:
   void serialiseBlock(BasicBlock &BB, FuncLowerCtxt &FLCtxt, unsigned &BBIdx,
                       Function &F, std::vector<AllocaInst *> *EntryAllocas,
                       std::vector<PHINode *> *PhiNodes) {
+    // Check if this is a promote-check block (from ConditionalPromoteCalls).
+    // For these blocks, skip all contents and emit only an unconditional branch
+    // to the DoPromoteBB, because during tracing we always take the promote
+    // path.
+    if (hasPromotePurpose(&BB.front(), YK_PROMOTE_CHECK_BB)) {
+      BranchInst *CondBr = dyn_cast<BranchInst>(BB.getTerminator());
+      assert(CondBr && CondBr->isConditional() &&
+             "promote-check block must end with conditional branch");
+
+      // num_instrs: just 1 (the unconditional branch)
+      OutStreamer.emitSizeT(1);
+
+      // Emit unconditional branch to the DoPromoteBB (successor(1), the false
+      // branch, which is taken when tracing).
+      serialiseOpcode(OpCodeBr);
+      serialiseBlockLabel(CondBr->getSuccessor(1));
+
+      BBIdx++;
+      return;
+    }
+
     auto ShouldSkipInstr = [](Instruction *I) {
-      // Skip non-semantic instrucitons for now.
+      // Skip non-semantic instructions for now.
       //
       // We may come back to them later if we need better debugging
       // facilities, but for now they just clutter up our AOT module.
@@ -1719,6 +1752,34 @@ private:
 
     // Serialise any PHI nodes.
     for (PHINode *PN : *PhiNodes) {
+      // Check if this is a promote-continue PHI (from ConditionalPromoteCalls).
+      // These PHIs merge the promoted value with the original value based on
+      // tracing state. During tracing, we always use the promoted value, so
+      // skip the PHI and map it to the promoted value.
+      if (hasPromotePurpose(PN, YK_PROMOTE_CONTINUE_BB)) {
+        // Find the incoming value that is a promote call result.
+        Value *PromotedVal = nullptr;
+        for (unsigned i = 0; i < PN->getNumIncomingValues(); i++) {
+          Value *InVal = PN->getIncomingValue(i);
+          if (CallInst *CI = dyn_cast<CallInst>(InVal)) {
+            Function *Callee = CI->getCalledFunction();
+            if (Callee && (Callee->getName().starts_with(YK_PROMOTE_PREFIX) ||
+                           Callee->getName().starts_with(
+                               YK_IDEMPOTENT_RECORDER_PREFIX))) {
+              PromotedVal = InVal;
+              break;
+            }
+          }
+        }
+        assert(PromotedVal &&
+               "promote-continue PHI missing promote call incoming");
+
+        // Map the PHI to the promoted value's location.
+        if (Instruction *PromotedInst = dyn_cast<Instruction>(PromotedVal)) {
+          FLCtxt.updateVLMap(PN, FLCtxt.lookupInVLMap(PromotedInst));
+        }
+        continue; // Don't serialise this PHI.
+      }
       serialiseInst(PN, FLCtxt, BBIdx, InstIdx);
     }
 
@@ -2053,7 +2114,7 @@ public:
   YkIRWriter(Module &M, MCStreamer &OutStreamer)
       : M(M), OutStreamer(OutStreamer), DL(&M) {}
 
-  // Return the purpose of a basic block.
+  // Return the purpose of a basic block (from BasicBlockTracer).
   BBPurpose getBBPurpose(BasicBlock *BB) {
     if (MDNode *MD = BB->front().getMetadata("yk-swt-bb-purpose")) {
       if (auto *S = dyn_cast<MDString>(MD->getOperand(0))) {
@@ -2163,9 +2224,19 @@ public:
     // now) array to the LLVM module containing pointers to all the global
     // variables. We will use this to find the addresses of globals at runtime.
     // The indices of the array correspond with `GlobalDeclIdx`s in the AOT IR.
+    //
+    // Thread-local variables use null pointers to maintain index alignment.
+    // Their addresses are thread-specific and cannot be stored in a static
+    // array. The JIT handles TLS lookups specially at runtime.
     vector<llvm::Constant *> GlobalsAsConsts;
     for (llvm::GlobalVariable *G : Globals) {
-      GlobalsAsConsts.push_back(cast<llvm::Constant>(G));
+      if (G->isThreadLocal()) {
+        // Use null pointer for TLS - maintains index alignment.
+        GlobalsAsConsts.push_back(
+            ConstantPointerNull::get(PointerType::get(M.getContext(), 0)));
+      } else {
+        GlobalsAsConsts.push_back(cast<llvm::Constant>(G));
+      }
     }
     ArrayType *GlobalsArrayTy =
         ArrayType::get(PointerType::get(M.getContext(), 0), Globals.size());
