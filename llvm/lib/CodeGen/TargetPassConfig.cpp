@@ -61,6 +61,7 @@
 #include "llvm/Transforms/Yk/NoCallsInEntryBlocks.h"
 #include "llvm/Transforms/Yk/BasicBlockTracer.h"
 #include "llvm/Transforms/Yk/ModuleClone.h"
+#include "llvm/Transforms/Yk/ConditionalPromoteCalls.h"
 #include <cassert>
 #include <optional>
 #include <string>
@@ -297,6 +298,10 @@ static cl::opt<bool>
 static cl::opt<bool>
     YkBasicBlockTracer("yk-basicblock-tracer", cl::init(false), cl::NotHidden,
                       cl::desc("Enables YK Software Tracer capability"));
+
+static cl::opt<bool>
+    YkConditionalPromoteCalls("yk-conditional-promote-calls", cl::init(false), cl::NotHidden,
+                      cl::desc("Wrap promote calls with TLS tracing check"));
 
 /// Allow standard passes to be disabled by command line options. This supports
 /// simple binary flags that either suppress the pass or do nothing.
@@ -1194,6 +1199,12 @@ bool TargetPassConfig::addISelPasses() {
       report_fatal_error("--yk-split-blocks-after-calls requires --yk-no-calls-in-entryblocks.");
     }
     addPass(createYkSplitBlocksAfterCallsPass());
+  }
+
+  // Must run before YkStackmapsPass so stackmaps are inserted for the new
+  // blocks, and before YkBasicBlockTracer so the block tracing calls are added.
+  if (YkConditionalPromoteCalls) {
+    addPass(createYkConditionalPromoteCallsPass());
   }
 
   if (YkInsertStackMaps) {

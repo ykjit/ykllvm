@@ -41,6 +41,19 @@ using namespace llvm;
 
 namespace llvm {
 void initializeYkBasicBlockTracerPass(PassRegistry &);
+
+GlobalVariable *getOrCreateThreadTracingState(Module &M) {
+  LLVMContext &Context = M.getContext();
+  Type *I8Ty = Type::getInt8Ty(Context);
+  GlobalVariable *TL = M.getNamedGlobal(YK_THREAD_TRACING_STATE_TL);
+  if (!TL) {
+    TL = new GlobalVariable(M, I8Ty, false, GlobalValue::ExternalLinkage,
+                            nullptr, YK_THREAD_TRACING_STATE_TL);
+    TL->setThreadLocalMode(GlobalValue::GeneralDynamicTLSModel);
+    TL->setAlignment(Align(1));
+  }
+  return TL;
+}
 } // namespace llvm
 
 namespace {
@@ -54,19 +67,9 @@ struct YkBasicBlockTracer : public ModulePass {
   bool runOnModule(Module &M) override {
     LLVMContext &Context = M.getContext();
 
-    // Declare the thread tracing state thread local (if not already present --
-    // the input program could have already defined it extern).
+    // Get or create the thread tracing state TLS variable.
     llvm::Type *I8Ty = llvm::Type::getInt8Ty(Context);
-    GlobalVariable *ThreadTracingTL =
-        M.getNamedGlobal(YK_THREAD_TRACING_STATE_TL);
-    if (!ThreadTracingTL) {
-      ThreadTracingTL = new llvm::GlobalVariable(
-          M, I8Ty, false, llvm::GlobalValue::ExternalLinkage, nullptr,
-          YK_THREAD_TRACING_STATE_TL);
-      ThreadTracingTL->setThreadLocalMode(
-          llvm::GlobalValue::GeneralDynamicTLSModel);
-      ThreadTracingTL->setAlignment(Align(1));
-    }
+    GlobalVariable *ThreadTracingTL = getOrCreateThreadTracingState(M);
 
     // Declare the basic block recorder function.
     //
