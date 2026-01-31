@@ -123,6 +123,19 @@ struct CreateYkPatchCtrlPointParser {
 } // namespace
 static ManagedStatic<cl::opt<bool, true>, CreateYkPatchCtrlPointParser> YkPatchCtrlPointParser;
 
+bool YkPatchpointDirectFunctionsCall;
+namespace {
+struct CreateYkPatchpointDirectFunctionsCallParser {
+  static void *call() {
+    return new cl::opt<bool, true>(
+        "yk-patchpoint-direct-functions-call",
+        cl::desc("Use direct calls (bypassing PLT) for yk patchpoint functions"),
+        cl::NotHidden, cl::location(YkPatchpointDirectFunctionsCall));
+  }
+};
+} // namespace
+static ManagedStatic<cl::opt<bool, true>, CreateYkPatchpointDirectFunctionsCallParser> YkPatchpointDirectFunctionsCallParser;
+
 bool YkPatchIdempotent;
 namespace {
 struct CreateYkPatchIdempotentParser {
@@ -171,6 +184,7 @@ void llvm::initYkOptions() {
   *YkEmbedIRParser;
   *YkDontOptFuncABIParser;
   *YkPatchCtrlPointParser;
+  *YkPatchpointDirectFunctionsCallParser;
   *YkPatchIdempotentParser;
   *YkOutlineUntraceableParser;
   *YkModuleCloneParser;
