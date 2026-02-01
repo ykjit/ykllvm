@@ -179,6 +179,8 @@ public:
             Type::getVoidTy(Context), {YkMTTy, YkLocTy, Int64Ty}, false);
         NF = Function::Create(FType, GlobalVariable::ExternalLinkage,
                               YK_NEW_CONTROL_POINT, M);
+        // Use NonLazyBind to avoid PLT indirection, reducing call overhead.
+        NF->addFnAttr(Attribute::NonLazyBind);
       }
 
       IRBuilder<> Builder(OldCtrlPointCall);

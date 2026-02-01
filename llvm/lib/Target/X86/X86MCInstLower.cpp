@@ -31,6 +31,7 @@
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/StackMaps.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/MC/MCAsmInfo.h"
@@ -48,6 +49,7 @@
 #include "llvm/MC/TargetRegistry.h"
 #include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Support/Yk.h"
 #include "llvm/Transforms/Instrumentation/AddressSanitizer.h"
 #include "llvm/Transforms/Instrumentation/AddressSanitizerCommon.h"
 #include <string>
@@ -1052,6 +1054,11 @@ void X86AsmPrinter::LowerPATCHPOINT(const MachineInstr &MI,
   // symbolic) then emit a call.
   if (!(CalleeMO.isImm() && !CalleeMO.getImm())) {
     MCOperand CalleeMCOp;
+    // If true, load the target address from the GOT using a RIP-relative load
+    // (mov symbol@GOTPCREL(%rip), %reg) instead of an immediate move
+    // (mov $symbol, %reg). GOTPCREL bypasses PLT, reducing call overhead.
+    bool UseGOTPCREL = false;
+
     switch (CalleeMO.getType()) {
     default:
       /// FIXME: Add a verifier check for bad callee types.
@@ -1061,26 +1068,61 @@ void X86AsmPrinter::LowerPATCHPOINT(const MachineInstr &MI,
         CalleeMCOp = MCOperand::createImm(CalleeMO.getImm());
       break;
     case MachineOperand::MO_ExternalSymbol:
-    case MachineOperand::MO_GlobalAddress:
+      CalleeMCOp = MCIL.LowerSymbolOperand(CalleeMO,
+                                           MCIL.GetSymbolFromOperand(CalleeMO));
+      break;
+    case MachineOperand::MO_GlobalAddress: {
+      // Check if the function has NonLazyBind attribute - if so, use
+      // GOTPCREL-relative addressing to bypass PLT indirection.
+      // Only use GOTPCREL when Yk control point patching is enabled
+      // to avoid affecting standard LLVM patchpoint behaviour.
+      const GlobalValue *GV = CalleeMO.getGlobal();
+      if (const Function *F = dyn_cast<Function>(GV)) {
+        UseGOTPCREL = YkPatchpointDirectFunctionsCall &&
+                      F->hasFnAttribute(Attribute::NonLazyBind);
+      }
       CalleeMCOp = MCIL.LowerSymbolOperand(CalleeMO,
                                            MCIL.GetSymbolFromOperand(CalleeMO));
       break;
     }
+    }
 
-    // Emit MOV to materialize the target address and the CALL to target.
-    // This is encoded with 12-13 bytes, depending on which register is used.
     Register ScratchReg = MI.getOperand(ScratchIdx).getReg();
-    if (X86II::isX86_64ExtendedReg(ScratchReg))
-      EncodedBytes = 13;
-    else
-      EncodedBytes = 12;
 
-    EmitAndCountInstruction(
-        MCInstBuilder(X86::MOV64ri).addReg(ScratchReg).addOperand(CalleeMCOp));
     // FIXME: Add retpoline support and remove this.
     if (Subtarget->useIndirectThunkCalls())
       report_fatal_error(
           "Lowering patchpoint with thunks not yet implemented.");
+
+    if (UseGOTPCREL) {
+      // Emit: mov symbol@GOTPCREL(%rip), %ScratchReg
+      // This loads the function address directly from the GOT, bypassing PLT.
+      // Encoding: REX.W + 0x8B + ModR/M + disp32 = 7 bytes
+      MCSymbol *Sym = MCIL.GetSymbolFromOperand(CalleeMO);
+      const MCExpr *Expr = MCSymbolRefExpr::create(
+          Sym, MCSymbolRefExpr::VK_GOTPCREL, Ctx);
+
+      EmitAndCountInstruction(MCInstBuilder(X86::MOV64rm)
+                                  .addReg(ScratchReg)
+                                  .addReg(X86::RIP)
+                                  .addImm(1)
+                                  .addReg(0)
+                                  .addExpr(Expr)
+                                  .addReg(0));
+      // MOV64rm: 7 bytes, CALL64r: 2-3 bytes
+      EncodedBytes = 7 + (X86II::isX86_64ExtendedReg(ScratchReg) ? 3 : 2);
+    } else {
+      // Emit MOV to materialize the target address and the CALL to target.
+      // This is encoded with 12-13 bytes, depending on which register is used.
+      if (X86II::isX86_64ExtendedReg(ScratchReg))
+        EncodedBytes = 13;
+      else
+        EncodedBytes = 12;
+
+      EmitAndCountInstruction(
+          MCInstBuilder(X86::MOV64ri).addReg(ScratchReg).addOperand(CalleeMCOp));
+    }
+
     EmitAndCountInstruction(MCInstBuilder(X86::CALL64r).addReg(ScratchReg));
   }
 
