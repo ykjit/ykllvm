@@ -12,6 +12,7 @@
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/CodeGen/MachineInstr.h"
+#include "llvm/ADT/YkDisjointLocationSets.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/Support/Debug.h"
 #include <algorithm>
@@ -294,10 +295,10 @@ public:
   /// MI must be a raw STACKMAP, not a PATCHPOINT.
   void recordStackMap(const MCSymbol &L,
                       const MachineInstr &MI,
-                      std::map<Register, std::set<int64_t>> SpillsOffsets = {});
+                      DisjointLocationSets SpillsOffsets = DisjointLocationSets());
 
   /// Generate a stackmap record for a patchpoint instruction.
-  void recordPatchPoint(const MCSymbol &L, const MachineInstr &MI, std::map<Register, std::set<int64_t>> SpillOffsets = {});
+  void recordPatchPoint(const MCSymbol &L, const MachineInstr &MI, DisjointLocationSets SpillOffsets = DisjointLocationSets());
 
   /// Generate a stackmap record for a statepoint instruction.
   void recordStatepoint(const MCSymbol &L, const MachineInstr &MI);
@@ -326,7 +327,7 @@ private:
   parseOperand(MachineInstr::const_mop_iterator MOI,
                MachineInstr::const_mop_iterator MOE, LiveVarsVec &LiveVars,
                LiveOutVec &LiveOuts,
-               std::map<Register, std::set<int64_t>> SpillOffsets = {},
+               DisjointLocationSets SpillOffsets = DisjointLocationSets(),
                std::set<int64_t> TrackedRegisters = {}) const;
 
   /// Specialized parser of statepoint operands.
@@ -354,7 +355,7 @@ private:
   void recordStackMapOpers(const MCSymbol &L, const MachineInstr &MI,
                            uint64_t ID, MachineInstr::const_mop_iterator MOI,
                            MachineInstr::const_mop_iterator MOE,
-                           std::map<Register, std::set<int64_t>> SpillOffsets = {},
+                           DisjointLocationSets SpillOffsets = DisjointLocationSets(),
                            bool recordResult = false);
 
   /// Emit the stackmap header.
