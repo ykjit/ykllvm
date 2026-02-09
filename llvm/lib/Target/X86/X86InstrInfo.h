@@ -316,8 +316,6 @@ public:
 
   // Branch analysis.
   bool isUnconditionalTailCall(const MachineInstr &MI) const override;
-  bool isFarCall(const MachineInstr &MI) const override;
-  bool isFarRet(const MachineInstr &MI) const override;
   bool canMakeTailCallConditional(SmallVectorImpl<MachineOperand> &Cond,
                                   const MachineInstr &TailCall) const override;
   void replaceBranchWithTailCall(MachineBasicBlock &MBB,
@@ -328,12 +326,6 @@ public:
                      MachineBasicBlock *&FBB,
                      SmallVectorImpl<MachineOperand> &Cond,
                      bool AllowModify) const override;
-
-  bool analyzeBranchExtended(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
-                             MachineBasicBlock *&FBB,
-                             SmallVectorImpl<MachineOperand> &Cond,
-                             uint8_t &NumCondBrs,
-                             bool AllowModify = false) const override;
 
   int getJumpTableIndex(const MachineInstr &MI) const override;
 
