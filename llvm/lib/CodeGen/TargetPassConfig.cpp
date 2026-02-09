@@ -49,7 +49,6 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils.h"
-#include "llvm/Transforms/Yk/BlockDisambiguate.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
 #include "llvm/Transforms/Yk/Idempotent.h"
 #include "llvm/Transforms/Yk/Linkage.h"
@@ -270,10 +269,6 @@ static cl::opt<bool> DisableSelectOptimize(
 static cl::opt<bool>
     GCEmptyBlocks("gc-empty-basic-blocks", cl::init(false), cl::Hidden,
                   cl::desc("Enable garbage-collecting empty basic blocks"));
-
-static cl::opt<bool>
-    YkBlockDisambiguate("yk-block-disambiguate", cl::init(false), cl::NotHidden,
-                        cl::desc("Disambiguate blocks for yk"));
 
 static cl::opt<bool> YkLinkage("yk-linkage", cl::init(false),
                                       cl::NotHidden,
@@ -1152,9 +1147,6 @@ bool TargetPassConfig::addISelPasses() {
   addIRPasses();
   addCodeGenPrepare();
   addPassesToHandleExceptions();
-
-  if (YkBlockDisambiguate)
-    addPass(createYkBlockDisambiguatePass());
 
   if (YkNoCallsInEntryBlocks) {
     // Make sure this pass runs before the shadowstack pass, so that we don't
