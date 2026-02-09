@@ -138,7 +138,6 @@ static cl::opt<bool>
                       cl::desc("Embed final IR as bitcode after all "
                                "optimisations and transformations have run."));
 
-extern bool YkExtendedLLVMBBAddrMapSection;
 extern bool YkStackMapOffsetFix;
 extern bool YkEmbedIR;
 
@@ -1356,43 +1355,6 @@ static uint32_t getBBAddrMapMetadata(const MachineBasicBlock &MBB) {
       .encode();
 }
 
-/// Emit a start (or stop) marker symbol into the `.llvm_bb_addr_map` section
-/// so that we can find the extent of the section at runtime.
-///
-/// The `MCStreamer` should be primed to output to the `.llvm_bb_addr_map`
-/// section prior to calling this function.
-///
-/// This assumes that LTO is being used (as is required for the Yk JIT), and
-/// thus that there is only a single `Module` in play, and in turn that no
-/// symbol clashes can occur.
-void emitYkBBAddrMapSymbol(MCContext &MCtxt, MCStreamer &OutStreamer,
-                           bool Start) {
-  std::string SymName("ykllvm.bbaddrmaps");
-  if (Start)
-    SymName.append(".start");
-  else
-    SymName.append(".stop");
-
-  MCSymbol *Sym = MCtxt.getOrCreateSymbol(SymName);
-  OutStreamer.emitSymbolAttribute(Sym, llvm::MCSA_Global);
-  OutStreamer.emitLabel(Sym);
-}
-
-/// Returns the fallthrough block of `MBB`, or nullptr if there isn't one.
-MachineBasicBlock *findFallthruBlock(const MachineBasicBlock *MBB) {
-  for (MachineBasicBlock *SBB : MBB->successors()) {
-    if (MBB->isLayoutSuccessor(SBB)) {
-      return SBB;
-    }
-  }
-  return nullptr;
-}
-
-inline const MCSymbol *BBSym(const MachineBasicBlock *MBB,
-                             const MCSymbol *FuncSym) {
-  return MBB->isEntryBlock() ? FuncSym : MBB->getSymbol();
-}
-
 void AsmPrinter::emitBBAddrMapSection(const MachineFunction &MF) {
   MCSection *BBAddrMapSection =
       getObjFileLowering().getBBAddrMapSection(*MF.getSection());
@@ -1412,39 +1374,6 @@ void AsmPrinter::emitBBAddrMapSection(const MachineFunction &MF) {
   OutStreamer->AddComment("number of basic blocks");
   OutStreamer->emitULEB128IntValue(MF.size());
   const MCSymbol *PrevMBBEndSymbol = FunctionSymbol;
-  const Function &F = MF.getFunction();
-
-  // LLVM's codegen can can merge multiple BasicBlocks into a single
-  // MachineBasicBlock. Unfortunately, MachineBasicBlock::getBasicBlock() only
-  // returns the first BasicBlock in the merged sequence, so we have to find
-  // the other corresponding BasicBlock(s) (if any) in the merged sequence
-  // another way. We do so in two steps:
-  //
-  //   1. We create a set, MergedBBs, which is the set of BasicBlocks that are
-  //   *not* returned by MachineBasicBlock::getBasicBlock(MBB) for any
-  //   MachineBasicBlock, MBB, in the parent MachineFunction -- in other words,
-  //   it's the set of BasicBlocks that have been merged into a predecessor
-  //   during codegen.
-  //
-  //   2. For each BasicBlock BBX returned by
-  //   MachineBasicBlock::getBasicBlock() we check if it is terminated by an
-  //   unconditional branch. If so and that unconditional branch transfers to a
-  //   block BBY, and BBY is a member of MergedBBs, then we know that BBX and
-  //   BBY were merged during codegen. [Note that we then see if another BBZ
-  //   was also merged into BBY and so on]
-  std::set<const BasicBlock *> MergedBBs;
-  for (const BasicBlock &BB : F) {
-    MergedBBs.insert(&BB);
-  }
-  for (const MachineBasicBlock &MBB : MF) {
-    const BasicBlock *BB = MBB.getBasicBlock();
-    if (BB != nullptr) {
-      MergedBBs.erase(BB);
-    }
-  }
-
-  const TargetInstrInfo *TI = MF.getSubtarget().getInstrInfo();
-
   // Emit BB Information for each basic block in the function.
   for (const MachineBasicBlock &MBB : MF) {
     const MCSymbol *MBBSymbol =
@@ -1464,173 +1393,7 @@ void AsmPrinter::emitBBAddrMapSection(const MachineFunction &MF) {
     // Emit the Metadata.
     OutStreamer->emitULEB128IntValue(getBBAddrMapMetadata(MBB));
     PrevMBBEndSymbol = MBB.getEndSymbol();
-
-    if (YkExtendedLLVMBBAddrMapSection) {
-      // Find BBs corresponding with this MBB as described above.
-      const BasicBlock *CorrBB = MBB.getBasicBlock();
-      std::vector<const BasicBlock *> CorrBBs;
-      while (CorrBB != nullptr) {
-        CorrBBs.push_back(CorrBB);
-        const Instruction *Term = CorrBB->getTerminator();
-        assert(Term != nullptr);
-        if ((isa<BranchInst>(Term)) &&
-            (!(dyn_cast<const BranchInst>(Term))->isConditional())) {
-          CorrBB = CorrBB->getUniqueSuccessor();
-          assert(CorrBB != nullptr);
-          if (MergedBBs.count(CorrBB) == 0) {
-            CorrBB = nullptr;
-          }
-        } else {
-          CorrBB = nullptr;
-        }
-      }
-      // Emit the number of corresponding BasicBlocks.
-      OutStreamer->AddComment("num corresponding blocks");
-      OutStreamer->emitULEB128IntValue(CorrBBs.size());
-      // Emit the corresponding block indices.
-      for (auto CorrBB : CorrBBs) {
-        size_t I = 0;
-        bool Found = false;
-        for (auto It = F.begin(); It != F.end(); It++) {
-          const BasicBlock *BB = &*It;
-          if (BB == CorrBB) {
-            Found = true;
-            break;
-          }
-          I++;
-        }
-        if (!Found)
-          OutContext.reportError(SMLoc(), "Couldn't find the block's index");
-        OutStreamer->AddComment("corresponding block");
-        OutStreamer->emitULEB128IntValue(I);
-      }
-
-      // Emit call marker table for the Yk JIT.
-      //
-      // The table is a size header, followed by call instruction addresses.
-      //
-      // YKOPT: to save space, instead of using absolute symbol addresses,
-      // compute the distance from the start of the block and use uleb128
-      // encoding.
-      const size_t NumCalls = YkCallMarkerSyms[&MBB].size();
-      OutStreamer->AddComment("num calls");
-      OutStreamer->emitULEB128IntValue(NumCalls);
-      for (auto Tup : YkCallMarkerSyms[&MBB]) {
-        // Emit address of the call instruction.
-        OutStreamer->AddComment("call offset");
-        OutStreamer->emitSymbolValue(std::get<0>(Tup), getPointerSize());
-        // Emit the return address of the call.
-        OutStreamer->AddComment("return offset");
-        OutStreamer->emitSymbolValue(std::get<1>(Tup), getPointerSize());
-        // Emit address of target if known, or 0.
-        OutStreamer->AddComment("target offset");
-        MCSymbol *Target = std::get<2>(Tup);
-        if (Target)
-          OutStreamer->emitSymbolValue(Target, getPointerSize());
-        else
-          OutStreamer->emitIntValue(0, getPointerSize());
-        // Emit whether it's a direct call.
-        OutStreamer->AddComment("direct?");
-        OutStreamer->emitIntValue(std::get<3>(Tup), 1);
-      }
-
-      // Emit successor information.
-      //
-      // Each codegenned block gets a record indicating any statically known
-      // successors. The record starts with a `SuccessorKind` byte:
-      enum SuccessorKind {
-        // One successor.
-        Unconditional = 0,
-        // Choice of two successors.
-        Conditional = 1,
-        // A return edge.
-        Return = 2,
-        // Any other control flow edge known only at runtime, e.g. an indirect
-        // branch.
-        Dynamic = 3,
-      };
-
-      // Then depending of the `SuccessorKind` there is a payload describing the
-      // successors:
-      //
-      // `Unconditional`: [target-address: u64]
-      // `Conditional`:   [num_condbrs: u8, taken-address: u64, not-taken-address: u64]
-      // `Return`:        []
-      // `Dynamic`:       []
-
-      MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
-      SmallVector<MachineOperand> Conds;
-      uint8_t NumCondBrs = 0;
-
-      if (!TI->analyzeBranchExtended(const_cast<MachineBasicBlock &>(MBB),
-            TBB, FBB, Conds, NumCondBrs))
-      {
-        // The block ends with a branch or a fall-thru.
-        if (!TBB && !FBB) {
-          // Both null: block has no terminator and either falls through or
-          // diverges.
-          OutStreamer->emitInt8(Unconditional);
-          MachineBasicBlock *ThruBB = findFallthruBlock(&MBB);
-          if (ThruBB) {
-            OutStreamer->emitSymbolValue(BBSym(ThruBB, FunctionSymbol),
-                                         getPointerSize());
-          } else {
-            OutStreamer->emitInt64(0); // Divergent.
-          }
-        } else if (TBB && !FBB) {
-          // Only FBB null: block either ends with an unconditional branch or a
-          // conditional branch whose false arm falls through or diverges.
-          if (Conds.empty()) {
-            // No conditions: unconditional branch.
-            OutStreamer->emitInt8(Unconditional);
-            OutStreamer->emitSymbolValue(BBSym(TBB, FunctionSymbol),
-                                         getPointerSize());
-          } else {
-            // Has conditions: conditional branch followed by fallthru or
-            // divergence.
-            MachineBasicBlock *ThruBB = findFallthruBlock(&MBB);
-            OutStreamer->emitInt8(Conditional);
-            OutStreamer->emitInt8(NumCondBrs);
-            OutStreamer->emitSymbolValue(BBSym(TBB, FunctionSymbol),
-                                         getPointerSize());
-            if (ThruBB) {
-              OutStreamer->emitSymbolValue(BBSym(ThruBB, FunctionSymbol),
-                                           getPointerSize());
-            } else {
-              OutStreamer->emitInt64(0); // Divergent.
-            }
-          }
-        } else {
-          // Conditional branch followed by an unconditional branch.
-          assert(TBB && FBB);
-          OutStreamer->emitInt8(Conditional);
-          OutStreamer->emitInt8(NumCondBrs);
-          OutStreamer->emitSymbolValue(BBSym(TBB, FunctionSymbol),
-                                       getPointerSize());
-          OutStreamer->emitSymbolValue(BBSym(FBB, FunctionSymbol),
-                                       getPointerSize());
-        }
-      } else {
-        // Wasn't a branch or a fall-thru. Must be a different kind of
-        // terminator.
-        const MachineInstr *LastI = &*MBB.instr_rbegin();
-        if (LastI->isReturn()) {
-          // Ensure we are only working with near returns. See comment
-          // elsewhere about far calls for reasoning.
-          assert(!MF.getSubtarget().getInstrInfo()->isFarRet(*LastI));
-          OutStreamer->emitInt8(Return);
-        } else if (LastI->isIndirectBranch()) {
-          OutStreamer->emitInt8(Dynamic);
-        } else {
-          std::string Msg = "unhandled block terminator in block: ";
-          raw_string_ostream OS(Msg);
-          LastI->print(OS);
-          OutContext.reportError(SMLoc(), Msg);
-        }
-      }
-    }
   }
-
   OutStreamer->popSection();
 }
 
@@ -1875,17 +1638,10 @@ void AsmPrinter::emitFunctionBody() {
   int NumInstsInFunction = 0;
   bool IsEHa = MMI->getModule()->getModuleFlag("eh-asynch");
 
-  // Reset YkLastCallLabel so we don't use it across different functions.
-  YkLastCallLabel = nullptr;
-
   bool CanDoExtraAnalysis = ORE->allowExtraAnalysis(DEBUG_TYPE);
   for (auto &MBB : *MF) {
     // Print a label for the basic block.
     emitBasicBlockStart(MBB);
-
-    if (YkExtendedLLVMBBAddrMapSection)
-      YkCallMarkerSyms.insert({&MBB, {}});
-
     DenseMap<StringRef, unsigned> MnemonicCounts;
     for (auto &MI : MBB) {
       // Print the assembly for the instruction.
@@ -1985,96 +1741,7 @@ void AsmPrinter::emitFunctionBody() {
         // purely meta information.
         break;
       default:
-
-        // So that the ykpt decoder can work without disasembling instructions
-        // to find call-sites and sucessor blocks, we encode that info
-        // statically into the blockmap at AOT compile time.
-        //
-        // Some things that look like calls in IR don't actually emit a
-        // call into the binary. Namely a stackmap intrinsic.
-        //
-        // Note that patchpoint and statepoint intrinsics, although similar to
-        // the stackmap intrinsic, do actually emit a call in the binary, so we
-        // DO need to include those callsites.
-        if (YkExtendedLLVMBBAddrMapSection && MI.isCall() &&
-            (MI.getOpcode() != TargetOpcode::STACKMAP)) {
-          // Record the address of the call instruction itself.
-          MCSymbol *YkPreCallSym =
-              MF->getContext().createTempSymbol("yk_precall", true);
-          OutStreamer->emitLabel(YkPreCallSym);
-
-          // Codegen it as usual.
-          emitInstruction(&MI);
-
-          // Record the address of the instruction following the call. In other
-          // words, this is the return address of the call.
-          MCSymbol *YkPostCallSym =
-              MF->getContext().createTempSymbol("yk_postcall", true);
-          OutStreamer->emitLabel(YkPostCallSym);
-
-          // Figure out if this is a direct or indirect call.
-          //
-          // If it's direct, then we know the call's target from the first
-          // operand alone.
-          const MachineOperand CallOpnd = MI.getOperand(0);
-          std::optional<bool> DirectCall;
-          MCSymbol *CallTargetSym = nullptr;
-          if (CallOpnd.isGlobal()) {
-            // Global: direct call, known target.
-            DirectCall = true;
-            CallTargetSym = getSymbol(CallOpnd.getGlobal());
-          } else if (CallOpnd.isMCSymbol()) {
-            // MCSymbol: direct call, known target.
-            DirectCall = true;
-            CallTargetSym = CallOpnd.getMCSymbol();
-          } else if (CallOpnd.isSymbol()) {
-            // Symbol: direct call, unknown target.
-            DirectCall = true;
-            // CallTargetSym remains null.
-          } else {
-            // Otherwise: indirect call, therefore unknown target.
-            DirectCall = false;
-            // CallTargetSym remains null.
-          }
-
-          // Ensure we are only working with near calls. This matters because
-          // Intel PT optimises near calls, and it simplifies our implementation
-          // if we can disregard far calls. Far calls are a hangover from
-          // 16-bit X86 that we are unlikley to encounter anyway.
-          assert(!MF->getSubtarget().getInstrInfo()->isFarCall(MI));
-
-          assert(YkCallMarkerSyms.find(&MBB) != YkCallMarkerSyms.end());
-          YkCallMarkerSyms[&MBB].push_back({
-              YkPreCallSym, YkPostCallSym, CallTargetSym, DirectCall.value()});
-        } else {
-          emitInstruction(&MI);
-        }
-
-        // Generate labels for function calls so we can record the correct
-        // instruction offset. The conditions for generating the label must be
-        // the same as the ones for generating the stackmap call in
-        // `Transforms/Yk/Stackmaps.cpp`, as otherwise we could end up with
-        // wrong offsets (e.g. we create a label here but the corresponding
-        // stackmap call was ommitted, and this label is then used for the
-        // following stackmap call).
-
-        // Convoluted way of finding our whether this function call is an
-        // intrinsic.
-        bool IsIntrinsic = false;
-        if (MI.getNumExplicitDefs() < MI.getNumOperands()) {
-          IsIntrinsic = MI.getOperand(MI.getNumExplicitDefs()).isIntrinsicID();
-        }
-        if (YkStackMapOffsetFix && MI.isCall() && !MI.isInlineAsm() &&
-            (MI.getOpcode() != TargetOpcode::STACKMAP) &&
-            (MI.getOpcode() != TargetOpcode::PATCHPOINT) && !IsIntrinsic) {
-          // YKFIXME: We don't need to emit labels (and stackmap calls) for
-          // functions that cannot guard fail, e.g. inlined functions, or
-          // functions we don't have IR for.
-          MCSymbol *MILabel =
-              OutStreamer->getContext().createTempSymbol("ykstackcall", true);
-          OutStreamer->emitLabel(MILabel);
-          YkLastCallLabel = MILabel;
-        }
+        emitInstruction(&MI);
         if (CanDoExtraAnalysis) {
           MCInst MCI;
           MCI.setOpcode(MI.getOpcode());
