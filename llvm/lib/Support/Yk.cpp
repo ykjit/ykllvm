@@ -4,21 +4,6 @@
 
 using namespace llvm;
 
-bool YkExtendedLLVMBBAddrMapSection;
-namespace {
-struct CreateYkExtendedLLVMBBAddrMapSectionParser {
-  static void *call() {
-    return new cl::opt<bool, true>(
-        "yk-extended-llvmbbaddrmap-section",
-        cl::desc("Use the extended Yk `.llvmbbaddrmap` section format"),
-        cl::NotHidden, cl::location(YkExtendedLLVMBBAddrMapSection));
-  }
-};
-} // namespace
-static ManagedStatic<cl::opt<bool, true>,
-                     CreateYkExtendedLLVMBBAddrMapSectionParser>
-    YkExtendedLLVMBBAddrMapSectionParser;
-
 bool YkStackMapOffsetFix;
 namespace {
 struct CreateYkStackMapOffsetFixParser {
@@ -176,7 +161,6 @@ struct CreateYkModuleCloneParser {
 static ManagedStatic<cl::opt<bool, true>, CreateYkModuleCloneParser> YkModuleCloneParser;
 
 void llvm::initYkOptions() {
-  *YkExtendedLLVMBBAddrMapSectionParser;
   *YkStackMapOffsetFixParser;
   *YkStackMapAdditionalLocsParser;
   *YkStackmapsSpillFixParser;

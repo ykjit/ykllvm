@@ -241,25 +241,6 @@ private:
   /// --mbb-profile-dump flag is set for downstream cost modelling applications
   std::unique_ptr<raw_fd_ostream> MBBProfileDumpFileOutput;
 
-  /// `true` when the `.llvm_bb_addr_map` section is going to be loaded at
-  /// runtime and we've emitted at least one entry.
-  bool YkEmittedFirstBBAddrMap = false;
-
-  /// The last `.llvm_bb_addr_map` section fragment that we handled (if any).
-  MCSection *YkLastBBAddrMapSection = nullptr;
-
-  /// Symbols marking the call instructions of each block. Used for the Yk JIT.
-  ///
-  /// Values are a 3-tuple:
-  ///  - A symbol marking the call instruction.
-  ///  - A symbol marking the return address of the call (if it were to return
-  ///    by conventional means)
-  ///  - A symbol marking the target of the call, if known.
-  ///  - A boolean indicating if it's a direct call (true) or not (false).
-  std::map<const MachineBasicBlock *,
-           SmallVector<std::tuple<MCSymbol *, MCSymbol *, MCSymbol *, bool>>>
-      YkCallMarkerSyms;
-
 protected:
   explicit AsmPrinter(TargetMachine &TM, std::unique_ptr<MCStreamer> Streamer);
 
