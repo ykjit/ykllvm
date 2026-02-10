@@ -2969,33 +2969,6 @@ bool X86InstrInfo::isUnconditionalTailCall(const MachineInstr &MI) const {
   }
 }
 
-bool X86InstrInfo::isFarCall(const MachineInstr &MI) const {
-  switch (MI.getOpcode()) {
-  case X86::FARCALL16i:
-  case X86::FARCALL16m:
-  case X86::FARCALL32i:
-  case X86::FARCALL32m:
-  case X86::FARCALL64m:
-    return true;
-  default:
-    return false;
-  }
-}
-
-bool X86InstrInfo::isFarRet(const MachineInstr &MI) const {
-  switch (MI.getOpcode()) {
-  case X86::LRET16:
-  case X86::LRET32:
-  case X86::LRET64:
-  case X86::LRETI16:
-  case X86::LRETI32:
-  case X86::LRETI64:
-    return true;
-  default:
-    return false;
-  }
-}
-
 bool X86InstrInfo::canMakeTailCallConditional(
     SmallVectorImpl<MachineOperand> &BranchCond,
     const MachineInstr &TailCall) const {
@@ -3231,49 +3204,6 @@ bool X86InstrInfo::AnalyzeBranchImpl(
 
   return false;
 }
-
-bool X86InstrInfo::analyzeBranchExtended(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
-                             MachineBasicBlock *&FBB,
-                             SmallVectorImpl<MachineOperand> &Cond,
-                             uint8_t &NumCondBrs,
-                             bool AllowModify) const {
-  bool Ret = analyzeBranch(MBB, TBB, FBB, Cond, AllowModify);
-  if (Cond.size() == 0) {
-    NumCondBrs = 0;
-  } else if (Cond.size() == 1) {
-    switch ((X86::CondCode)Cond[0].getImm()) {
-      case X86::COND_O:
-      case X86::COND_NO:
-      case X86::COND_B:
-      case X86::COND_AE:
-      case X86::COND_E:
-      case X86::COND_NE:
-      case X86::COND_BE:
-      case X86::COND_A:
-      case X86::COND_S:
-      case X86::COND_NS:
-      case X86::COND_P:
-      case X86::COND_NP:
-      case X86::COND_L:
-      case X86::COND_GE:
-      case X86::COND_LE:
-      case X86::COND_G:
-        NumCondBrs = 1;
-        break;
-      case X86::COND_NE_OR_P:
-      case X86::COND_E_AND_NP:
-        NumCondBrs = 2;
-        break;
-      default:
-        report_fatal_error("Unhandled condition");
-        break;
-    }
-  } else {
-    report_fatal_error("Unimplemented");
-  }
-  return Ret;
-}
-
 
 bool X86InstrInfo::analyzeBranch(MachineBasicBlock &MBB,
                                  MachineBasicBlock *&TBB,

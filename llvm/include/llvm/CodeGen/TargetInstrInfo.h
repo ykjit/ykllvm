@@ -651,22 +651,6 @@ public:
     return true;
   }
 
-  /// Similar to `analyzeBranch()` but for blocks with conditional terminators,
-  /// also computes the number of low-level conditional branch instructions at
-  /// the end of the block. This is required because some targets use
-  /// synthetic conditional terminators that are really several conditional
-  /// branches in succession.
-  ///
-  /// yk JIT uses this during compiler-assisted PT decoding in order to know
-  /// how to correctly follow a conditional terminator.
-  virtual bool analyzeBranchExtended(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
-                             MachineBasicBlock *&FBB,
-                             SmallVectorImpl<MachineOperand> &Cond,
-                             uint8_t &NumCondBrs,
-                             bool AllowModify = false) const {
-    report_fatal_error("not implemented on this platform");
-  }
-
   /// Represents a predicate at the MachineFunction level.  The control flow a
   /// MachineBranchPredicate represents is:
   ///
@@ -1567,16 +1551,6 @@ public:
   virtual bool isUnconditionalTailCall(const MachineInstr &MI) const {
     return false;
   }
-
-  /// Returns true if MI is a far call.
-  ///
-  /// YKFIXME: x86 only.
-  virtual bool isFarCall(const MachineInstr &MI) const { return false; }
-
-  /// Returns true if MI is a far return.
-  ///
-  /// YKFIXME: x86 only.
-  virtual bool isFarRet(const MachineInstr &MI) const { return false; }
 
   /// Returns true if the tail call can be made conditional on BranchCond.
   virtual bool canMakeTailCallConditional(SmallVectorImpl<MachineOperand> &Cond,
