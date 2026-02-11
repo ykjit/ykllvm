@@ -1,5 +1,4 @@
 add_llvm_component_library(LLVMYkPasses
-  BlockDisambiguate.cpp
   ControlPoint.cpp
   Idempotent.cpp
   Linkage.cpp
