@@ -59,8 +59,10 @@ static uint64_t getConstMetaVal(const MachineInstr &MI, unsigned Idx) {
   return MO.getImm();
 }
 
-StackMapOpers::StackMapOpers(const MachineInstr *MI) : MI(MI) {
-  assert(getVarIdx() <= MI->getNumOperands() && "invalid stackmap definition");
+StackMapOpers::StackMapOpers(const MachineInstr *MI)
+  : MI(MI) {
+  assert(getVarIdx() <= MI->getNumOperands() &&
+         "invalid stackmap definition");
 }
 
 PatchPointOpers::PatchPointOpers(const MachineInstr *MI)
@@ -84,10 +86,11 @@ unsigned PatchPointOpers::getNextScratchIdx(unsigned StartIdx) const {
 
   // Find the next scratch register (implicit def and early clobber)
   unsigned ScratchIdx = StartIdx, e = MI->getNumOperands();
-  while (ScratchIdx < e && !(MI->getOperand(ScratchIdx).isReg() &&
-                             MI->getOperand(ScratchIdx).isDef() &&
-                             MI->getOperand(ScratchIdx).isImplicit() &&
-                             MI->getOperand(ScratchIdx).isEarlyClobber()))
+  while (ScratchIdx < e &&
+         !(MI->getOperand(ScratchIdx).isReg() &&
+           MI->getOperand(ScratchIdx).isDef() &&
+           MI->getOperand(ScratchIdx).isImplicit() &&
+           MI->getOperand(ScratchIdx).isEarlyClobber()))
     ++ScratchIdx;
 
   assert(ScratchIdx != e && "No scratch register available");
