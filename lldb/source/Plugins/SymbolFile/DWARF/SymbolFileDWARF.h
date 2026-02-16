@@ -62,7 +62,7 @@ class SymbolFileDWARFDebugMap;
 class SymbolFileDWARFDwo;
 class SymbolFileDWARFDwp;
 
-#define DIE_IS_BEING_PARSED ((Type *)1)
+#define DIE_IS_BEING_PARSED ((lldb_private::Type *)1)
 
 class SymbolFileDWARF : public SymbolFileCommon {
   /// LLVM RTTI support.
@@ -82,7 +82,7 @@ public:
   friend class DebugMapModule;
   friend class DWARFCompileUnit;
   friend class DWARFDIE;
-  friend class ::DWARFASTParserClang;
+  friend class DWARFASTParser;
 
   // Static Functions
   static void Initialize();
@@ -123,7 +123,7 @@ public:
                              llvm::function_ref<bool(Module &)>) override;
 
   bool ParseSupportFiles(CompileUnit &comp_unit,
-                         FileSpecList &support_files) override;
+                         SupportFileList &support_files) override;
 
   bool ParseIsOptimized(CompileUnit &comp_unit) override;
 
@@ -137,7 +137,6 @@ public:
 
   size_t ParseVariablesForContext(const SymbolContext &sc) override;
 
-  Type *ResolveTypeUID(lldb::user_id_t type_uid) override;
   std::optional<ArrayInfo>
   GetDynamicArrayInfoForUID(lldb::user_id_t type_uid,
                             const ExecutionContext *exe_ctx) override;
@@ -152,6 +151,9 @@ public:
   CompilerDeclContext GetDeclContextForUID(lldb::user_id_t uid) override;
 
   CompilerDeclContext GetDeclContextContainingUID(lldb::user_id_t uid) override;
+
+  std::vector<CompilerContext>
+  GetCompilerContextForUID(lldb::user_id_t uid) override;
 
   void ParseDeclsForContext(CompilerDeclContext decl_ctx) override;
 
@@ -184,14 +186,10 @@ public:
   GetMangledNamesForFunction(const std::string &scope_qualified_name,
                              std::vector<ConstString> &mangled_names) override;
 
-  void FindTypes(ConstString name, const CompilerDeclContext &parent_decl_ctx,
-                 uint32_t max_matches,
-                 llvm::DenseSet<SymbolFile *> &searched_symbol_files,
-                 TypeMap &types) override;
+  uint64_t GetDebugInfoSize(bool load_all_debug_info = false) override;
 
-  void FindTypes(llvm::ArrayRef<CompilerContext> pattern, LanguageSet languages,
-                 llvm::DenseSet<SymbolFile *> &searched_symbol_files,
-                 TypeMap &types) override;
+  void FindTypes(const lldb_private::TypeQuery &match,
+                 lldb_private::TypeResults &results) override;
 
   void GetTypes(SymbolContextScope *sc_scope, lldb::TypeClass type_mask,
                 TypeList &type_list) override;
@@ -221,7 +219,7 @@ public:
   DWARFDIE
   GetDeclContextDIEContainingDIE(const DWARFDIE &die);
 
-  bool HasForwardDeclForClangType(const CompilerType &compiler_type);
+  bool HasForwardDeclForCompilerType(const CompilerType &compiler_type);
 
   CompileUnit *GetCompUnitForDWARFCompUnit(DWARFCompileUnit &dwarf_cu);
 
@@ -243,6 +241,15 @@ public:
     return m_external_type_modules;
   }
 
+  /// Given a DIERef, find the correct SymbolFileDWARF.
+  ///
+  /// A DIERef contains a file index that can uniquely identify a N_OSO file for
+  /// DWARF in .o files on mac, or a .dwo or .dwp file index for split DWARF.
+  /// Calling this function will find the correct symbol file to use so that
+  /// further lookups can be done on the correct symbol file so that the DIE
+  /// offset makes sense in the DIERef.
+  virtual SymbolFileDWARF *GetDIERefSymbolFile(const DIERef &die_ref);
+
   virtual DWARFDIE GetDIE(const DIERef &die_ref);
 
   DWARFDIE GetDIE(lldb::user_id_t uid);
@@ -253,6 +260,17 @@ public:
 
   /// If this is a DWARF object with a single CU, return its DW_AT_dwo_id.
   std::optional<uint64_t> GetDWOId();
+
+  /// Given a DWO DWARFUnit, find the corresponding skeleton DWARFUnit
+  /// in the main symbol file. DWP files can have their DWARFUnits
+  /// parsed without the skeleton compile units having been parsed, so
+  /// sometimes we need to find the skeleton compile unit for a DWO
+  /// DWARFUnit so we can fill in this link. Currently unless the
+  /// skeleton compile unit has been parsed _and_ the Unit DIE has been
+  /// parsed, the DWO unit will not have a backward link setup correctly
+  /// which was causing crashes due to an assertion that was firing
+  /// in SymbolFileDWARF::GetCompUnitForDWARFCompUnit().
+  DWARFUnit *GetSkeletonUnit(DWARFUnit *dwo_unit);
 
   static bool DIEInDeclContext(const CompilerDeclContext &parent_decl_ctx,
                                const DWARFDIE &die,
@@ -266,7 +284,8 @@ public:
   void DumpClangAST(Stream &s) override;
 
   /// List separate dwo files.
-  bool GetSeparateDebugInfo(StructuredData::Dictionary &d) override;
+  bool GetSeparateDebugInfo(StructuredData::Dictionary &d,
+                            bool errors_only) override;
 
   DWARFContext &GetDWARFContext() { return m_context; }
 
@@ -285,8 +304,6 @@ public:
   static CompilerDeclContext GetDeclContext(const DWARFDIE &die);
 
   static CompilerDeclContext GetContainingDeclContext(const DWARFDIE &die);
-
-  static DWARFDeclContext GetDWARFDeclContext(const DWARFDIE &die);
 
   static lldb::LanguageType LanguageTypeFromDWARF(uint64_t val);
 
@@ -322,13 +339,38 @@ public:
   }
 
   typedef llvm::DenseMap<const DWARFDebugInfoEntry *, Type *> DIEToTypePtr;
+
+  virtual DIEToTypePtr &GetDIEToType() { return m_die_to_type; }
+
+  virtual llvm::DenseMap<lldb::opaque_compiler_type_t, DIERef> &
+  GetForwardDeclCompilerTypeToDIE();
+
   typedef llvm::DenseMap<const DWARFDebugInfoEntry *, lldb::VariableSP>
       DIEToVariableSP;
-  typedef llvm::DenseMap<const DWARFDebugInfoEntry *,
-                         lldb::opaque_compiler_type_t>
-      DIEToClangType;
-  typedef llvm::DenseMap<lldb::opaque_compiler_type_t, DIERef> ClangTypeToDIE;
 
+  virtual DIEToVariableSP &GetDIEToVariable() { return m_die_to_variable_sp; }
+
+  virtual UniqueDWARFASTTypeMap &GetUniqueDWARFASTTypeMap();
+
+  bool ClassOrStructIsVirtual(const DWARFDIE &die);
+
+  SymbolFileDWARFDebugMap *GetDebugMapSymfile();
+
+  virtual DWARFDIE FindDefinitionDIE(const DWARFDIE &die);
+
+  virtual lldb::TypeSP FindCompleteObjCDefinitionTypeForDIE(
+      const DWARFDIE &die, ConstString type_name, bool must_be_implementation);
+
+  Type *ResolveTypeUID(lldb::user_id_t type_uid) override;
+
+  Type *ResolveTypeUID(const DWARFDIE &die, bool assert_not_being_parsed);
+
+  Type *ResolveTypeUID(const DIERef &die_ref);
+
+  /// Returns the DWARFIndex for this symbol, if it exists.
+  DWARFIndex *getIndex() { return m_index.get(); }
+
+protected:
   SymbolFileDWARF(const SymbolFileDWARF &) = delete;
   const SymbolFileDWARF &operator=(const SymbolFileDWARF &) = delete;
 
@@ -364,11 +406,7 @@ public:
                          bool *type_is_new);
 
   bool ParseSupportFiles(DWARFUnit &dwarf_cu, const lldb::ModuleSP &module,
-                         FileSpecList &support_files);
-
-  Type *ResolveTypeUID(const DWARFDIE &die, bool assert_not_being_parsed);
-
-  Type *ResolveTypeUID(const DIERef &die_ref);
+                         SupportFileList &support_files);
 
   lldb::VariableSP ParseVariableDIE(const SymbolContext &sc,
                                     const DWARFDIE &die,
@@ -397,8 +435,6 @@ public:
   DIEArray MergeBlockAbstractParameters(const DWARFDIE &block_die,
                                         DIEArray &&variable_dies);
 
-  bool ClassOrStructIsVirtual(const DWARFDIE &die);
-
   // Given a die_offset, figure out the symbol context representing that die.
   bool ResolveFunction(const DWARFDIE &die, bool include_inlines,
                        SymbolContextList &sc_list);
@@ -410,12 +446,6 @@ public:
   void ResolveFunctionAndBlock(lldb::addr_t file_vm_addr, bool lookup_block,
                                SymbolContext &sc);
 
-  virtual lldb::TypeSP
-  FindDefinitionTypeForDWARFDeclContext(const DWARFDIE &die);
-
-  virtual lldb::TypeSP FindCompleteObjCDefinitionTypeForDIE(
-      const DWARFDIE &die, ConstString type_name, bool must_be_implementation);
-
   Symbol *GetObjCClassSymbol(ConstString objc_class_name);
 
   lldb::TypeSP GetTypeForDIE(const DWARFDIE &die,
@@ -425,8 +455,6 @@ public:
     m_debug_map_module_wp = module_sp;
   }
 
-  SymbolFileDWARFDebugMap *GetDebugMapSymfile();
-
   DWARFDIE
   FindBlockContainingSpecification(const DIERef &func_die_ref,
                                    dw_offset_t spec_block_die_offset);
@@ -434,10 +462,6 @@ public:
   DWARFDIE
   FindBlockContainingSpecification(const DWARFDIE &die,
                                    dw_offset_t spec_block_die_offset);
-
-  virtual UniqueDWARFASTTypeMap &GetUniqueDWARFASTTypeMap();
-
-  bool DIEDeclContextsMatch(const DWARFDIE &die1, const DWARFDIE &die2);
 
   bool ClassContainsSelector(const DWARFDIE &class_die, ConstString selector);
 
@@ -468,24 +492,12 @@ public:
 
   void UpdateExternalModuleListIfNeeded();
 
-  virtual DIEToTypePtr &GetDIEToType() { return m_die_to_type; }
-
-  virtual DIEToVariableSP &GetDIEToVariable() { return m_die_to_variable_sp; }
-
-  virtual DIEToClangType &GetForwardDeclDieToClangType() {
-    return m_forward_decl_die_to_clang_type;
-  }
-
-  virtual ClangTypeToDIE &GetForwardDeclClangTypeToDie() {
-    return m_forward_decl_clang_type_to_die;
-  }
-
   void BuildCuTranslationTable();
   std::optional<uint32_t> GetDWARFUnitIndex(uint32_t cu_idx);
 
   void FindDwpSymbolFile();
 
-  const FileSpecList &GetTypeUnitSupportFiles(DWARFTypeUnit &tu);
+  const SupportFileList *GetTypeUnitSupportFiles(DWARFTypeUnit &tu);
 
   void InitializeFirstCodeAddressRecursive(const SectionList &section_list);
 
@@ -521,11 +533,16 @@ public:
   NameToOffsetMap m_function_scope_qualified_name_map;
   std::unique_ptr<DWARFDebugRanges> m_ranges;
   UniqueDWARFASTTypeMap m_unique_ast_type_map;
+  // A map from DIE to lldb_private::Type. For record type, the key might be
+  // either declaration DIE or definition DIE.
   DIEToTypePtr m_die_to_type;
   DIEToVariableSP m_die_to_variable_sp;
-  DIEToClangType m_forward_decl_die_to_clang_type;
-  ClangTypeToDIE m_forward_decl_clang_type_to_die;
-  llvm::DenseMap<dw_offset_t, FileSpecList> m_type_unit_support_files;
+  // A map from CompilerType to the struct/class/union/enum DIE (might be a
+  // declaration or a definition) that is used to construct it.
+  llvm::DenseMap<lldb::opaque_compiler_type_t, DIERef>
+      m_forward_decl_compiler_type_to_die;
+  llvm::DenseMap<dw_offset_t, std::unique_ptr<SupportFileList>>
+      m_type_unit_support_files;
   std::vector<uint32_t> m_lldb_cu_to_dwarf_unit;
   /// DWARF does not provide a good way for traditional (concatenating) linkers
   /// to invalidate debug info describing dead-stripped code. These linkers will

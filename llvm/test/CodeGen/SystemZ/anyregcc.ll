@@ -354,41 +354,41 @@ entry:
 ; CHECK-NEXT:   .byte 1
 ; CHECK-NEXT:   .byte 0
 ; CHECK-NEXT:   .short 8
-; CHECK-NEXT:   .short {{[0-9]+}}
+; CHECK-NEXT:   .short 13
 ; CHECK-NEXT:   .short 0
 ; CHECK-NEXT:   .long 0
-; Loc 9: Register
+; Loc 9: IndirectMem
 ; CHECK-NEXT:   .byte 1
-; CHECK-NEXT:   .byte 1
+; CHECK-NEXT:   .byte 3
 ; CHECK-NEXT:   .byte 0
 ; CHECK-NEXT:   .short 8
 ; CHECK-NEXT:   .short {{[0-9]+}}
 ; CHECK-NEXT:   .short 0
-; CHECK-NEXT:   .long 0
-; Loc 10: Register
+; CHECK-NEXT:   .long 344
+; Loc 10: IndirectMem
 ; CHECK-NEXT:   .byte 1
-; CHECK-NEXT:   .byte 1
+; CHECK-NEXT:   .byte 3
 ; CHECK-NEXT:   .byte 0
 ; CHECK-NEXT:   .short 8
 ; CHECK-NEXT:   .short {{[0-9]+}}
 ; CHECK-NEXT:   .short 0
-; CHECK-NEXT:   .long 0
-; Loc 11: Register
+; CHECK-NEXT:   .long 352
+; Loc 11: IndirectMem
 ; CHECK-NEXT:   .byte 1
-; CHECK-NEXT:   .byte 1
+; CHECK-NEXT:   .byte 3
 ; CHECK-NEXT:   .byte 0
 ; CHECK-NEXT:   .short 8
 ; CHECK-NEXT:   .short {{[0-9]+}}
 ; CHECK-NEXT:   .short 0
-; CHECK-NEXT:   .long 0
-; Loc 12: Register
+; CHECK-NEXT:   .long 360
+; Loc 12: IndirectMem
 ; CHECK-NEXT:   .byte 1
-; CHECK-NEXT:   .byte 1
+; CHECK-NEXT:   .byte 3
 ; CHECK-NEXT:   .byte 0
 ; CHECK-NEXT:   .short 8
 ; CHECK-NEXT:   .short {{[0-9]+}}
 ; CHECK-NEXT:   .short 0
-; CHECK-NEXT:   .long 0
+; CHECK-NEXT:   .long 368
 define i64 @anyreg_test2(ptr %a1, ptr %a2, ptr %a3, ptr %a4, ptr %a5, ptr %a6, ptr %a7, ptr %a8, ptr %a9, ptr %a10, ptr %a11, ptr %a12) nounwind ssp uwtable {
 entry:
   %f = inttoptr i64 12297829382473034410 to ptr
@@ -404,7 +404,7 @@ entry:
 ; CHECK-NEXT: .short 0
 ; CHECK-NEXT: .short 3
 ; Loc 0: Register (some register that will be spilled to the stack)
-; CHECK-NEXT:   .byte 1
+; CHECK-NEXT: .byte 1
 ; CHECK-NEXT: .byte  1
 ; CHECK-NEXT: .byte  0
 ; CHECK-NEXT: .short  8
@@ -412,7 +412,7 @@ entry:
 ; CHECK-NEXT: .short 0
 ; CHECK-NEXT: .long  0
 ; Loc 1: Register %r2
-; CHECK-NEXT:   .byte 1
+; CHECK-NEXT: .byte 1
 ; CHECK-NEXT: .byte  1
 ; CHECK-NEXT: .byte  0
 ; CHECK-NEXT: .short  8
@@ -420,7 +420,7 @@ entry:
 ; CHECK-NEXT: .short 0
 ; CHECK-NEXT: .long  0
 ; Loc 1: Register %r3
-; CHECK-NEXT:   .byte 1
+; CHECK-NEXT: .byte 1
 ; CHECK-NEXT: .byte  1
 ; CHECK-NEXT: .byte  0
 ; CHECK-NEXT: .short  8
@@ -442,7 +442,7 @@ entry:
 ; CHECK-NEXT: .short 0
 ; CHECK-NEXT: .short 5
 ; Loc 0: Return a register
-; CHECK-NEXT:   .byte 1
+; CHECK-NEXT: .byte  1
 ; CHECK-NEXT: .byte  1
 ; CHECK-NEXT: .byte  0
 ; CHECK-NEXT: .short  8
@@ -450,7 +450,7 @@ entry:
 ; CHECK-NEXT: .short 0
 ; CHECK-NEXT: .long  0
 ; Loc 1: Arg0 in a Register
-; CHECK-NEXT:   .byte 1
+; CHECK-NEXT: .byte  1
 ; CHECK-NEXT: .byte  1
 ; CHECK-NEXT: .byte  0
 ; CHECK-NEXT: .short  8
@@ -458,7 +458,7 @@ entry:
 ; CHECK-NEXT: .short 0
 ; CHECK-NEXT: .long  0
 ; Loc 2: Arg1 in a Register
-; CHECK-NEXT:   .byte 1
+; CHECK-NEXT: .byte  1
 ; CHECK-NEXT: .byte  1
 ; CHECK-NEXT: .byte  0
 ; CHECK-NEXT: .short  8
@@ -466,7 +466,7 @@ entry:
 ; CHECK-NEXT: .short 0
 ; CHECK-NEXT: .long  0
 ; Loc 3: Arg2 spilled to %r15 +
-; CHECK-NEXT:   .byte 1
+; CHECK-NEXT: .byte  1
 ; CHECK-NEXT: .byte  3
 ; CHECK-NEXT: .byte  0
 ; CHECK-NEXT: .short  8
@@ -474,7 +474,7 @@ entry:
 ; CHECK-NEXT: .short 0
 ; CHECK-NEXT: .long
 ; Loc 4: Arg3 spilled to %r15 +
-; CHECK-NEXT:   .byte 1
+; CHECK-NEXT: .byte  1
 ; CHECK-NEXT: .byte  3
 ; CHECK-NEXT: .byte  0
 ; CHECK-NEXT: .short  8

@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/MC/MCAsmBackend.h"
+#include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCDXContainerWriter.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCFixupKindInfo.h"
@@ -92,6 +93,7 @@ const MCFixupKindInfo &MCAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
       {"FK_Data_2", 0, 16, 0},
       {"FK_Data_4", 0, 32, 0},
       {"FK_Data_8", 0, 64, 0},
+      {"FK_Data_leb128", 0, 0, 0},
       {"FK_PCRel_1", 0, 8, MCFixupKindInfo::FKF_IsPCRel},
       {"FK_PCRel_2", 0, 16, MCFixupKindInfo::FKF_IsPCRel},
       {"FK_PCRel_4", 0, 32, MCFixupKindInfo::FKF_IsPCRel},
@@ -114,13 +116,14 @@ const MCFixupKindInfo &MCAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
   return Builtins[Kind];
 }
 
-bool MCAsmBackend::fixupNeedsRelaxationAdvanced(
-    const MCFixup &Fixup, bool Resolved, uint64_t Value,
-    const MCRelaxableFragment *DF, const MCAsmLayout &Layout,
-    const bool WasForced) const {
+bool MCAsmBackend::fixupNeedsRelaxationAdvanced(const MCAssembler &Asm,
+                                                const MCFixup &Fixup,
+                                                bool Resolved, uint64_t Value,
+                                                const MCRelaxableFragment *DF,
+                                                const bool WasForced) const {
   if (!Resolved)
     return true;
-  return fixupNeedsRelaxation(Fixup, Value, DF, Layout);
+  return fixupNeedsRelaxation(Fixup, Value);
 }
 
 bool MCAsmBackend::isDarwinCanonicalPersonality(const MCSymbol *Sym) const {

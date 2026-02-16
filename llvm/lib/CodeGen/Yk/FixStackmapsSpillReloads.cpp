@@ -162,6 +162,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/Yk/BasicBlockTracer.h"
 
+#include <map>
 #include <set>
 
 using namespace llvm;
@@ -288,7 +289,7 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
               } else if (TII->isLoadFromStackSlotPostFE(*SMI, FI)) {
                 // If the reload is a load from the stack, replace the operand
                 // with multiple operands describing a stack location.
-                std::optional<unsigned> Size = SMI->getRestoreSize(TII);
+                std::optional<LocationSize> Size = SMI->getRestoreSize(TII);
                 if (!Size.has_value()) {
                   // This reload isn't a spill, e.g. this could be loading an
                   // argument passed via the stack and look like this:
@@ -311,9 +312,9 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
                   MIB.addImm(0xdead);
                 } else {
                   MIB.addImm(StackMaps::IndirectMemRefOp);
-                  MIB.addImm(Size.value());    // Size
-                  MIB.add(SMI->getOperand(1)); // Register
-                  MIB.add(SMI->getOperand(4)); // Offset
+                  MIB.addImm(Size.value().getValue()); // Size
+                  MIB.add(SMI->getOperand(1));         // Register
+                  MIB.add(SMI->getOperand(4));         // Offset
                 }
               } else {
                 // This tracked operand maps to an instruction that isn't a

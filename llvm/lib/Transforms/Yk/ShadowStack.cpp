@@ -118,7 +118,7 @@ namespace {
 class YkShadowStackImpl {
   // Commonly used types.
   Type *Int8Ty = nullptr;
-  Type *Int8PtrTy = nullptr;
+  Type *PtrTy = nullptr;
   Type *Int32Ty = nullptr;
   Type *PointerSizedIntTy = nullptr;
   std::unique_ptr<DIBuilder> DIB;
@@ -188,7 +188,7 @@ public:
 
     // Create some memory on the heap for the shadow stack.
     FunctionCallee MF =
-        M->getOrInsertFunction("malloc", Int8PtrTy, PointerSizedIntTy);
+        M->getOrInsertFunction("malloc", PtrTy, PointerSizedIntTy);
     CallInst *Malloc = Builder.CreateCall(
         MF, {ConstantInt::get(PointerSizedIntTy, SHADOW_STACK_SIZE)}, "");
 
@@ -289,7 +289,7 @@ public:
     IRBuilder<> Builder(First);
 
     // Load the shadow stack pointer out of the global variable.
-    Value *InitSSPtr = Builder.CreateLoad(Int8PtrTy, ShadowCurrent);
+    Value *InitSSPtr = Builder.CreateLoad(PtrTy, ShadowCurrent);
     // Add space for F's shadow frame.
     GetElementPtrInst *GEP = GetElementPtrInst::Create(
         Int8Ty, InitSSPtr, {ConstantInt::get(Int32Ty, AllocSize)}, "", First);
@@ -367,7 +367,7 @@ public:
 
     // Cache commonly used types.
     Int8Ty = Type::getInt8Ty(Context);
-    Int8PtrTy = Type::getInt8PtrTy(Context);
+    PtrTy = PointerType::get(Context, 0);
     Int32Ty = Type::getInt32Ty(Context);
     DataLayout DL(&M);
     PointerSizedIntTy = DL.getIntPtrType(Context);
@@ -380,13 +380,13 @@ public:
     ShadowSize->setLinkage(llvm::GlobalValue::ExternalLinkage);
 
     ShadowCurrent =
-        cast<GlobalVariable>(M.getOrInsertGlobal(G_SHADOW_STACK, Int8PtrTy));
+        cast<GlobalVariable>(M.getOrInsertGlobal(G_SHADOW_STACK, PtrTy));
     ShadowCurrent->setInitializer(
-        ConstantPointerNull::get(cast<PointerType>(Int8PtrTy)));
+        ConstantPointerNull::get(cast<PointerType>(PtrTy)));
     ShadowHead =
-        cast<GlobalVariable>(M.getOrInsertGlobal(G_SHADOW_HEAD, Int8PtrTy));
+        cast<GlobalVariable>(M.getOrInsertGlobal(G_SHADOW_HEAD, PtrTy));
     ShadowHead->setInitializer(
-        ConstantPointerNull::get(cast<PointerType>(Int8PtrTy)));
+        ConstantPointerNull::get(cast<PointerType>(PtrTy)));
 
     ShadowCurrent->setThreadLocal(true);
     ShadowHead->setThreadLocal(true);

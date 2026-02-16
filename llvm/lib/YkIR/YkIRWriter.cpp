@@ -242,7 +242,7 @@ class FuncLowerCtxt {
 
 public:
   // Create an empty function lowering context.
-  FuncLowerCtxt() : VLMap(ValueLoweringMap()), LocalVarIdxPatchUps({}){};
+  FuncLowerCtxt() : VLMap(ValueLoweringMap()), LocalVarIdxPatchUps({}) {};
   // Maps argument operands to LoadArg instructions.
   map<Argument *, InstIdx> ArgumentMap;
 
@@ -915,11 +915,11 @@ private:
 
     // Calls to functions that promote runtime values are given their own
     // bytecodes so that they can more be easily identified.
-    if (CF->getName().startswith(YK_PROMOTE_PREFIX)) {
+    if (CF->getName().starts_with(YK_PROMOTE_PREFIX)) {
       serialisePromotion(I, FLCtxt, InstIdx);
       return;
     }
-    if (CF->getName().startswith(YK_IDEMPOTENT_RECORDER_PREFIX)) {
+    if (CF->getName().starts_with(YK_IDEMPOTENT_RECORDER_PREFIX)) {
       serialiseIdempotentPromotion(I, FLCtxt, InstIdx);
       return;
     }
@@ -1116,7 +1116,7 @@ private:
     // It appears that `inrange` can't appear in a GEP *instruction* (only a
     // GEP expression, inline in another instruction), but we check for it
     // anyway.
-    if ((cast<GEPOperator>(I)->getInRangeIndex() != nullopt) ||
+    if ((cast<GEPOperator>(I)->getInRange() != nullopt) ||
         (I->getPointerOperand()->getType()->isVectorTy()) ||
         (I->getPointerAddressSpace() != 0)) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);

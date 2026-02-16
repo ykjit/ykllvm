@@ -264,7 +264,7 @@ public:
         lldb_private::ConstString name(constant_func->getName());
         bool missing_weak = false;
         lldb::addr_t addr = m_execution_unit.FindSymbol(name, missing_weak);
-        if (addr == LLDB_INVALID_ADDRESS || missing_weak)
+        if (addr == LLDB_INVALID_ADDRESS)
           return false;
         value = APInt(m_target_data.getPointerSizeInBits(), addr);
         return true;
@@ -1509,7 +1509,7 @@ bool IRInterpreter::Interpret(llvm::Module &module, llvm::Function &function,
           size_t dataSize = 0;
 
           bool Success = execution_unit.GetAllocSize(addr, dataSize);
-          (void)Success;
+          UNUSED_IF_ASSERT_DISABLED(Success);
           assert(Success &&
                  "unable to locate host data for transfer to device");
           // Create the required buffer

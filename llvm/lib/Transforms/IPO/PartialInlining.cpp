@@ -764,10 +764,10 @@ bool PartialInlinerImpl::shouldPartialInline(
     });
     return false;
   }
-  const DataLayout &DL = Caller->getParent()->getDataLayout();
+  const DataLayout &DL = Caller->getDataLayout();
 
   // The savings of eliminating the call:
-  int NonWeightedSavings = getCallsiteCost(CB, DL);
+  int NonWeightedSavings = getCallsiteCost(CalleeTTI, CB, DL);
   BlockFrequency NormWeightedSavings(NonWeightedSavings);
 
   // Weighted saving is smaller than weighted cost, return false
@@ -804,7 +804,7 @@ InstructionCost
 PartialInlinerImpl::computeBBInlineCost(BasicBlock *BB,
                                         TargetTransformInfo *TTI) {
   InstructionCost InlineCost = 0;
-  const DataLayout &DL = BB->getParent()->getParent()->getDataLayout();
+  const DataLayout &DL = BB->getDataLayout();
   int InstrCost = InlineConstants::getInstrCost();
   for (Instruction &I : BB->instructionsWithoutDebug()) {
     // Skip free instructions.
@@ -842,12 +842,12 @@ PartialInlinerImpl::computeBBInlineCost(BasicBlock *BB,
     }
 
     if (CallInst *CI = dyn_cast<CallInst>(&I)) {
-      InlineCost += getCallsiteCost(*CI, DL);
+      InlineCost += getCallsiteCost(*TTI, *CI, DL);
       continue;
     }
 
     if (InvokeInst *II = dyn_cast<InvokeInst>(&I)) {
-      InlineCost += getCallsiteCost(*II, DL);
+      InlineCost += getCallsiteCost(*TTI, *II, DL);
       continue;
     }
 
