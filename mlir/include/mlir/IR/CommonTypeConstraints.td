@@ -34,7 +34,7 @@ def IsFixedVectorTypePred : CPred<[{::llvm::isa<::mlir::VectorType>($_self) &&
                                   !::llvm::cast<VectorType>($_self).isScalable()}]>;
 
 // Whether a type is a scalable VectorType.
-def IsVectorTypeWithAnyDimScalablePred 
+def IsVectorTypeWithAnyDimScalablePred
         : CPred<[{::llvm::isa<::mlir::VectorType>($_self) &&
                   ::llvm::cast<VectorType>($_self).isScalable()}]>;
 
@@ -89,6 +89,9 @@ def HasStaticShapePred :
 // Whether a type is a TupleType.
 def IsTupleTypePred : CPred<"::llvm::isa<::mlir::TupleType>($_self)">;
 
+// Whether a type has a ValueSemantics trait.
+def HasValueSemanticsPred : CPred<"$_self.hasTrait<::mlir::ValueSemantics>()">;
+
 //===----------------------------------------------------------------------===//
 // Type definitions
 //===----------------------------------------------------------------------===//
@@ -117,7 +120,8 @@ class DialectType<Dialect d, Pred condition, string descr = "",
 
 // A variadic type constraint. It expands to zero or more of the base type. This
 // class is used for supporting variadic operands/results.
-class Variadic<Type type> : TypeConstraint<type.predicate, type.summary,
+class Variadic<Type type> : TypeConstraint<type.predicate,
+                                           "variadic of " # type.summary,
                                            type.cppClassName> {
   Type baseType = type;
   int minSize = 0;
@@ -167,24 +171,28 @@ def NoneType : Type<CPred<"::llvm::isa<::mlir::NoneType>($_self)">, "none type",
       BuildableType<"$_builder.getType<::mlir::NoneType>()">;
 
 // Any type from the given list
-class AnyTypeOf<list<Type> allowedTypes, string summary = "",
+class AnyTypeOf<list<Type> allowedTypeList, string summary = "",
                 string cppClassName = "::mlir::Type"> : Type<
     // Satisfy any of the allowed types' conditions.
-    Or<!foreach(allowedtype, allowedTypes, allowedtype.predicate)>,
+    Or<!foreach(allowedtype, allowedTypeList, allowedtype.predicate)>,
     !if(!eq(summary, ""),
-        !interleave(!foreach(t, allowedTypes, t.summary), " or "),
+        !interleave(!foreach(t, allowedTypeList, t.summary), " or "),
         summary),
-    cppClassName>;
+    cppClassName> {
+  list<Type> allowedTypes = allowedTypeList;
+}
 
 // A type that satisfies the constraints of all given types.
-class AllOfType<list<Type> allowedTypes, string summary = "",
+class AllOfType<list<Type> allowedTypeList, string summary = "",
                 string cppClassName = "::mlir::Type"> : Type<
-    // Satisfy all of the allowedf types' conditions.
-    And<!foreach(allowedType, allowedTypes, allowedType.predicate)>,
+    // Satisfy all of the allowed types' conditions.
+    And<!foreach(allowedType, allowedTypeList, allowedType.predicate)>,
     !if(!eq(summary, ""),
-        !interleave(!foreach(t, allowedTypes, t.summary), " and "),
+        !interleave(!foreach(t, allowedTypeList, t.summary), " and "),
         summary),
-    cppClassName>;
+    cppClassName> {
+  list<Type> allowedTypes = allowedTypeList;
+}
 
 // A type that satisfies additional predicates.
 class ConfinedType<Type type, list<Pred> predicates, string summary = "",
@@ -397,6 +405,11 @@ class HasRankGreaterOrEqualPred<int rank> : And<[
     HasRankPred,
     CPred<[{::llvm::cast<::mlir::ShapedType>($_self).getRank() >= }] # rank>
 ]>;
+
+// Container with value semantics.
+class ValueSemanticsContainerOf<list<Type> allowedTypes> :
+  ShapedContainerType<allowedTypes, HasValueSemanticsPred,
+  "container with value semantics">;
 
 // Vector types.
 
@@ -837,10 +850,18 @@ class NestedTupleOf<list<Type> allowedTypes> :
 // Common type constraints
 //===----------------------------------------------------------------------===//
 // Type constraint for types that are "like" some type or set of types T, that is
-// they're either a T, a vector of Ts, or a tensor of Ts
+// they're either a T, a vector of Ts, or a tensor of Ts.
 class TypeOrContainer<Type allowedType, string name> : TypeConstraint<Or<[
-  allowedType.predicate, VectorOf<[allowedType]>.predicate,
-  TensorOf<[allowedType]>.predicate]>,
+  allowedType.predicate,
+  ValueSemanticsContainerOf<[allowedType]>.predicate]>,
+  name>;
+
+// Type constraint for types that are "like" some type or set of types T, that is
+// they're either a T or a mapable container of Ts.
+class TypeOrValueSemanticsContainer<Type allowedType, string name>
+    : TypeConstraint<Or<[
+  allowedType.predicate,
+  ValueSemanticsContainerOf<[allowedType]>.predicate]>,
   name>;
 
 // Temporary constraint to allow gradual transition to supporting 0-D vectors.
@@ -859,8 +880,8 @@ def BoolLikeOfAnyRank : TypeOrContainerOfAnyRank<I1, "bool-like">;
 
 // Type constraint for signless-integer-like types: signless integers, indices,
 // vectors of signless integers or indices, tensors of signless integers.
-def SignlessIntegerLike : TypeOrContainer<AnySignlessIntegerOrIndex,
-    "signless-integer-like">;
+def SignlessIntegerLike : TypeOrValueSemanticsContainer<
+    AnySignlessIntegerOrIndex, "signless-integer-like">;
 
 def SignlessIntegerLikeOfAnyRank : TypeOrContainerOfAnyRank<
     AnySignlessIntegerOrIndex,

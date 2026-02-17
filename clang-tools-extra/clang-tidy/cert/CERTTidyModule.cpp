@@ -10,6 +10,7 @@
 #include "../ClangTidyModule.h"
 #include "../ClangTidyModuleRegistry.h"
 #include "../bugprone/BadSignalToKillThreadCheck.h"
+#include "../bugprone/PointerArithmeticOnPolymorphicObjectCheck.h"
 #include "../bugprone/ReservedIdentifierCheck.h"
 #include "../bugprone/SignalHandlerCheck.h"
 #include "../bugprone/SignedCharMisuseCheck.h"
@@ -25,6 +26,7 @@
 #include "../misc/StaticAssertCheck.h"
 #include "../misc/ThrowByValueCatchByReferenceCheck.h"
 #include "../performance/MoveConstructorInitCheck.h"
+#include "../readability/EnumInitialValueCheck.h"
 #include "../readability/UppercaseLiteralSuffixCheck.h"
 #include "CommandProcessorCheck.h"
 #include "DefaultOperatorNewAlignmentCheck.h"
@@ -33,7 +35,6 @@
 #include "LimitedRandomnessCheck.h"
 #include "MutatingCopyCheck.h"
 #include "NonTrivialTypesLibcMemoryCallsCheck.h"
-#include "PostfixOperatorCheck.h"
 #include "ProperlySeededRandomGeneratorCheck.h"
 #include "SetLongJmpCheck.h"
 #include "StaticObjectExceptionCheck.h"
@@ -238,9 +239,11 @@ public:
     // CON
     CheckFactories.registerCheck<bugprone::SpuriouslyWakeUpFunctionsCheck>(
         "cert-con54-cpp");
+    // CTR
+    CheckFactories
+        .registerCheck<bugprone::PointerArithmeticOnPolymorphicObjectCheck>(
+            "cert-ctr56-cpp");
     // DCL
-    CheckFactories.registerCheck<PostfixOperatorCheck>(
-        "cert-dcl21-cpp");
     CheckFactories.registerCheck<VariadicFunctionDefCheck>("cert-dcl50-cpp");
     CheckFactories.registerCheck<bugprone::ReservedIdentifierCheck>(
         "cert-dcl51-cpp");
@@ -302,6 +305,9 @@ public:
         "cert-flp37-c");
     // FIO
     CheckFactories.registerCheck<misc::NonCopyableObjectsCheck>("cert-fio38-c");
+    // INT
+    CheckFactories.registerCheck<readability::EnumInitialValueCheck>(
+        "cert-int09-c");
     // MSC
     CheckFactories.registerCheck<bugprone::UnsafeFunctionsCheck>(
         "cert-msc24-c");
@@ -328,6 +334,7 @@ public:
     ClangTidyOptions::OptionMap &Opts = Options.CheckOptions;
     Opts["cert-dcl16-c.NewSuffixes"] = "L;LL;LU;LLU";
     Opts["cert-err33-c.CheckedFunctions"] = CertErr33CCheckedFunctions;
+    Opts["cert-err33-c.AllowCastToVoid"] = "true";
     Opts["cert-oop54-cpp.WarnOnlyIfThisHasSuspiciousField"] = "false";
     Opts["cert-str34-c.DiagnoseSignedUnsignedCharComparisons"] = "false";
     return Options;

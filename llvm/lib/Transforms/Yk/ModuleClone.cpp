@@ -140,7 +140,7 @@ void ModuleClonePass::removePromotionsAndDebugStrings(Function *F) {
     for (Instruction &I : BB) {
       if (CallBase *CB = dyn_cast<CallBase>(&I)) {
         if (Function *CF = CB->getCalledFunction()) {
-          if (CF->getName().startswith(YK_PROMOTE_PREFIX)) {
+          if (CF->getName().starts_with(YK_PROMOTE_PREFIX)) {
             Promotions.push_back(cast<CallInst>(CB));
           } else if (CF->getName() == YK_DEBUG_STR) {
             DebugStrs.push_back(cast<CallInst>(CB));

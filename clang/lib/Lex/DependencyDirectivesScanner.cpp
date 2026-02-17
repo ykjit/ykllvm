@@ -73,8 +73,8 @@ struct Scanner {
     // Set the lexer to use 'tok::at' for '@', instead of 'tok::unknown'.
     LangOpts.ObjC = true;
     LangOpts.LineComment = true;
-    // FIXME: we do not enable C11 or C++11, so we are missing u/u8/U"" and
-    // R"()" literals.
+    LangOpts.RawStringLiterals = true;
+    // FIXME: we do not enable C11 or C++11, so we are missing u/u8/U"".
     return LangOpts;
   }
 
@@ -369,7 +369,7 @@ static void skipBlockComment(const char *&First, const char *const End) {
     }
 }
 
-/// \returns True if the current single quotation mark character is a C++ 14
+/// \returns True if the current single quotation mark character is a C++14
 /// digit separator.
 static bool isQuoteCppDigitSeparator(const char *const Start,
                                      const char *const Cur,
@@ -565,9 +565,8 @@ Scanner::cleanStringIfNeeded(const dependency_directives_scan::Token &Tok) {
   const char *BufPtr = Input.begin() + Tok.Offset;
   const char *AfterIdent = Input.begin() + Tok.getEnd();
   while (BufPtr < AfterIdent) {
-    unsigned Size;
-    Spelling[SpellingLength++] =
-        Lexer::getCharAndSizeNoWarn(BufPtr, Size, LangOpts);
+    auto [Char, Size] = Lexer::getCharAndSizeNoWarn(BufPtr, LangOpts);
+    Spelling[SpellingLength++] = Char;
     BufPtr += Size;
   }
 
@@ -661,7 +660,18 @@ bool Scanner::lexModule(const char *&First, const char *const End) {
   // an import.
 
   switch (*First) {
-  case ':':
+  case ':': {
+    // `module :` is never the start of a valid module declaration.
+    if (Id == "module") {
+      skipLine(First, End);
+      return false;
+    }
+    // `import:(type)name` is a valid ObjC method decl, so check one more token.
+    (void)lexToken(First, End);
+    if (!tryLexIdentifierOrSkipLine(First, End))
+      return false;
+    break;
+  }
   case '<':
   case '"':
     break;

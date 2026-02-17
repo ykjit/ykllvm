@@ -528,16 +528,18 @@ bool AllocationCheckerHelper::RunChecks(SemanticsContext &context) {
     }
     // Character length distinction is allowed, with a warning
     if (!HaveCompatibleLengths(
-            *type_, allocateInfo_.sourceExprType.value())) { // C945
-      context.Say(name_.source,
-          "Character length of allocatable object in ALLOCATE should be the same as the SOURCE or MOLD"_port_en_US);
+            *type_, allocateInfo_.sourceExprType.value())) { // F'2023 C950
+      if (context.ShouldWarn(common::LanguageFeature::AllocateToOtherLength)) {
+        context.Say(name_.source,
+            "Character length of allocatable object in ALLOCATE should be the same as the SOURCE or MOLD"_port_en_US);
+      }
       return false;
     }
   }
   // Shape related checks
   if (ultimate_ && evaluate::IsAssumedRank(*ultimate_)) {
     context.Say(name_.source,
-        "An assumed-rank object may not appear in an ALLOCATE statement"_err_en_US);
+        "An assumed-rank dummy argument may not appear in an ALLOCATE statement"_err_en_US);
     return false;
   }
   if (ultimate_ && IsAssumedSizeArray(*ultimate_) && context.AnyFatalError()) {
@@ -605,8 +607,22 @@ bool AllocationCheckerHelper::RunChecks(SemanticsContext &context) {
       context
           .Say(name_.source,
               "Name in ALLOCATE statement is not definable"_err_en_US)
-          .Attach(std::move(*whyNot));
+          .Attach(std::move(whyNot->set_severity(parser::Severity::Because)));
       return false;
+    }
+  }
+  if (allocateInfo_.gotPinned) {
+    std::optional<common::CUDADataAttr> cudaAttr{GetCUDADataAttr(ultimate_)};
+    if (!cudaAttr || *cudaAttr != common::CUDADataAttr::Pinned) {
+      context.Say(name_.source,
+          "Object in ALLOCATE must have PINNED attribute when PINNED option is specified"_err_en_US);
+    }
+  }
+  if (allocateInfo_.gotStream) {
+    std::optional<common::CUDADataAttr> cudaAttr{GetCUDADataAttr(ultimate_)};
+    if (!cudaAttr || *cudaAttr != common::CUDADataAttr::Device) {
+      context.Say(name_.source,
+          "Object in ALLOCATE must have DEVICE attribute when STREAM option is specified"_err_en_US);
     }
   }
   return RunCoarrayRelatedChecks(context);

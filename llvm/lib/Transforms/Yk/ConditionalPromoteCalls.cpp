@@ -102,9 +102,9 @@ public:
         for (Instruction &I : BB) {
           if (CallInst *CI = dyn_cast<CallInst>(&I)) {
             Function *Callee = CI->getCalledFunction();
-            if (Callee &&
-                (Callee->getName().startswith(YK_PROMOTE_PREFIX) ||
-                 Callee->getName().startswith(YK_IDEMPOTENT_RECORDER_PREFIX))) {
+            if (Callee && (Callee->getName().starts_with(YK_PROMOTE_PREFIX) ||
+                           Callee->getName().starts_with(
+                               YK_IDEMPOTENT_RECORDER_PREFIX))) {
               PromoteCalls.push_back(CI);
             }
           }
@@ -169,7 +169,7 @@ public:
 
       // Create PHI node at the start of ContinueBB to select between promoted
       // value and original value.
-      Builder.SetInsertPoint(&*ContinueBB->getFirstInsertionPt());
+      Builder.SetInsertPoint(ContinueBB, ContinueBB->begin());
       PHINode *Phi = Builder.CreatePHI(ResultTy, 2);
       Phi->addIncoming(CI, DoPromoteBB);
       Phi->addIncoming(OrigVal, CheckBB);

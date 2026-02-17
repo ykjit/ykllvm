@@ -1222,6 +1222,14 @@ void ExprEngine::ProcessInitializer(const CFGInitializer CFGInit,
       PostInitializer PP(BMI, FieldLoc.getAsRegion(), stackFrame);
       evalBind(Tmp, Init, Pred, FieldLoc, InitVal, /*isInit=*/true, &PP);
     }
+  } else if (BMI->isBaseInitializer() && isa<InitListExpr>(Init)) {
+    // When the base class is initialized with an initialization list and the
+    // base class does not have a ctor, there will not be a CXXConstructExpr to
+    // initialize the base region. Hence, we need to make the bind for it.
+    SVal BaseLoc = getStoreManager().evalDerivedToBase(
+        thisVal, QualType(BMI->getBaseClass(), 0), BMI->isBaseVirtual());
+    SVal InitVal = State->getSVal(Init, stackFrame);
+    evalBind(Tmp, Init, Pred, BaseLoc, InitVal, /*isInit=*/true);
   } else {
     assert(BMI->isBaseInitializer() || BMI->isDelegatingInitializer());
     Tmp.insert(Pred);
@@ -1729,6 +1737,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::RecoveryExprClass:
     case Stmt::CXXNoexceptExprClass:
     case Stmt::PackExpansionExprClass:
+    case Stmt::PackIndexingExprClass:
     case Stmt::SubstNonTypeTemplateParmPackExprClass:
     case Stmt::FunctionParmPackExprClass:
     case Stmt::CoroutineBodyStmtClass:
@@ -1802,7 +1811,9 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::OMPTargetTeamsDistributeParallelForDirectiveClass:
     case Stmt::OMPTargetTeamsDistributeParallelForSimdDirectiveClass:
     case Stmt::OMPTargetTeamsDistributeSimdDirectiveClass:
+    case Stmt::OMPReverseDirectiveClass:
     case Stmt::OMPTileDirectiveClass:
+    case Stmt::OMPInterchangeDirectiveClass:
     case Stmt::OMPInteropDirectiveClass:
     case Stmt::OMPDispatchDirectiveClass:
     case Stmt::OMPMaskedDirectiveClass:
@@ -1812,6 +1823,8 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::OMPParallelGenericLoopDirectiveClass:
     case Stmt::OMPTargetParallelGenericLoopDirectiveClass:
     case Stmt::CapturedStmtClass:
+    case Stmt::OpenACCComputeConstructClass:
+    case Stmt::OpenACCLoopConstructClass:
     case Stmt::OMPUnrollDirectiveClass:
     case Stmt::OMPMetaDirectiveClass: {
       const ExplodedNode *node = Bldr.generateSink(S, Pred, Pred->getState());
@@ -1938,7 +1951,7 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
     case Stmt::CXXPseudoDestructorExprClass:
     case Stmt::SubstNonTypeTemplateParmExprClass:
     case Stmt::CXXNullPtrLiteralExprClass:
-    case Stmt::OMPArraySectionExprClass:
+    case Stmt::ArraySectionExprClass:
     case Stmt::OMPArrayShapingExprClass:
     case Stmt::OMPIteratorExprClass:
     case Stmt::SYCLUniqueStableNameExprClass:
@@ -2046,11 +2059,17 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
       llvm_unreachable("Support for MatrixSubscriptExpr is not implemented.");
       break;
 
-    case Stmt::GCCAsmStmtClass:
+    case Stmt::GCCAsmStmtClass: {
       Bldr.takeNodes(Pred);
-      VisitGCCAsmStmt(cast<GCCAsmStmt>(S), Pred, Dst);
+      ExplodedNodeSet PreVisit;
+      getCheckerManager().runCheckersForPreStmt(PreVisit, Pred, S, *this);
+      ExplodedNodeSet PostVisit;
+      for (ExplodedNode *const N : PreVisit)
+        VisitGCCAsmStmt(cast<GCCAsmStmt>(S), N, PostVisit);
+      getCheckerManager().runCheckersForPostStmt(Dst, PostVisit, S, *this);
       Bldr.addNodes(Dst);
       break;
+    }
 
     case Stmt::MSAsmStmtClass:
       Bldr.takeNodes(Pred);
@@ -2411,6 +2430,10 @@ void ExprEngine::Visit(const Stmt *S, ExplodedNode *Pred,
       Bldr.addNodes(Dst);
       break;
     }
+
+    case Stmt::EmbedExprClass:
+      llvm::report_fatal_error("Support for EmbedExpr is not implemented.");
+      break;
   }
 }
 
@@ -2509,7 +2532,7 @@ void ExprEngine::processCFGBlockEntrance(const BlockEdge &L,
   if (BlockCount == AMgr.options.maxBlockVisitOnPath - 1 &&
       AMgr.options.ShouldWidenLoops) {
     const Stmt *Term = nodeBuilder.getContext().getBlock()->getTerminatorStmt();
-    if (!isa_and_nonnull<ForStmt, WhileStmt, DoStmt>(Term))
+    if (!isa_and_nonnull<ForStmt, WhileStmt, DoStmt, CXXForRangeStmt>(Term))
       return;
     // Widen.
     const LocationContext *LCtx = Pred->getLocationContext();
@@ -3885,7 +3908,7 @@ struct DOTGraphTraits<ExplodedGraph*> : public DefaultDOTGraphTraits {
     State->printDOT(Out, N->getLocationContext(), Space);
 
     Out << "\\l}\\l";
-    return Out.str();
+    return Buf;
   }
 };
 

@@ -2,6 +2,7 @@
 # YKFIXME: needs StackMaps::NextLive markers in STATEPOINT instructions.
 #
 # RUN: llc -x mir -run-pass=twoaddressinstruction < %s | FileCheck %s
+# RUN: llc -x mir --passes=two-address-instruction < %s | FileCheck %s
 
 # This test checks that TwoAddressInstruction pass does not create redundate COPY
 # instruction for STATEPOINT tied operands.

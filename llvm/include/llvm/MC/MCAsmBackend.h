@@ -21,9 +21,9 @@ class MCAlignFragment;
 class MCDwarfCallFrameFragment;
 class MCDwarfLineAddrFragment;
 class MCFragment;
+class MCLEBFragment;
 class MCRelaxableFragment;
 class MCSymbol;
-class MCAsmLayout;
 class MCAssembler;
 class MCContext;
 struct MCDwarfFrameInfo;
@@ -61,13 +61,6 @@ public:
   /// tricky way for optimization.
   virtual bool allowEnhancedRelaxation() const { return false; }
 
-  /// Give the target a chance to manipulate state related to instruction
-  /// alignment (e.g. padding for optimization), instruction relaxablility, etc.
-  /// before and after actually emitting the instruction.
-  virtual void emitInstructionBegin(MCObjectStreamer &OS, const MCInst &Inst,
-                                    const MCSubtargetInfo &STI) {}
-  virtual void emitInstructionEnd(MCObjectStreamer &OS, const MCInst &Inst) {}
-
   /// lifetime management
   virtual void reset() {}
 
@@ -100,7 +93,8 @@ public:
   /// Hook to check if a relocation is needed for some target specific reason.
   virtual bool shouldForceRelocation(const MCAssembler &Asm,
                                      const MCFixup &Fixup,
-                                     const MCValue &Target) {
+                                     const MCValue &Target,
+                                     const MCSubtargetInfo *STI) {
     return false;
   }
 
@@ -115,20 +109,19 @@ public:
   /// Hook which indicates if the target requires a fixup to be generated when
   /// handling an align directive in an executable section
   virtual bool shouldInsertFixupForCodeAlign(MCAssembler &Asm,
-                                             const MCAsmLayout &Layout,
                                              MCAlignFragment &AF) {
     return false;
   }
 
   virtual bool evaluateTargetFixup(const MCAssembler &Asm,
-                                   const MCAsmLayout &Layout,
                                    const MCFixup &Fixup, const MCFragment *DF,
-                                   const MCValue &Target, uint64_t &Value,
+                                   const MCValue &Target,
+                                   const MCSubtargetInfo *STI, uint64_t &Value,
                                    bool &WasForced) {
     llvm_unreachable("Need to implement hook if target has custom fixups");
   }
 
-  virtual bool handleAddSubRelocations(const MCAsmLayout &Layout,
+  virtual bool handleAddSubRelocations(const MCAssembler &Asm,
                                        const MCFragment &F,
                                        const MCFixup &Fixup,
                                        const MCValue &Target,
@@ -164,16 +157,17 @@ public:
 
   /// Target specific predicate for whether a given fixup requires the
   /// associated instruction to be relaxed.
-  virtual bool fixupNeedsRelaxationAdvanced(const MCFixup &Fixup, bool Resolved,
+  virtual bool fixupNeedsRelaxationAdvanced(const MCAssembler &Asm,
+                                            const MCFixup &Fixup, bool Resolved,
                                             uint64_t Value,
                                             const MCRelaxableFragment *DF,
-                                            const MCAsmLayout &Layout,
                                             const bool WasForced) const;
 
   /// Simple predicate for targets where !Resolved implies requiring relaxation
-  virtual bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
-                                    const MCRelaxableFragment *DF,
-                                    const MCAsmLayout &Layout) const = 0;
+  virtual bool fixupNeedsRelaxation(const MCFixup &Fixup,
+                                    uint64_t Value) const {
+    llvm_unreachable("Needed if mayNeedRelaxation may return true");
+  }
 
   /// Relax the instruction in the given fragment to the next wider instruction.
   ///
@@ -183,14 +177,23 @@ public:
   virtual void relaxInstruction(MCInst &Inst,
                                 const MCSubtargetInfo &STI) const {};
 
-  virtual bool relaxDwarfLineAddr(MCDwarfLineAddrFragment &DF,
-                                  MCAsmLayout &Layout, bool &WasRelaxed) const {
+  virtual bool relaxDwarfLineAddr(const MCAssembler &Asm,
+                                  MCDwarfLineAddrFragment &DF,
+                                  bool &WasRelaxed) const {
     return false;
   }
 
-  virtual bool relaxDwarfCFA(MCDwarfCallFrameFragment &DF, MCAsmLayout &Layout,
+  virtual bool relaxDwarfCFA(const MCAssembler &Asm,
+                             MCDwarfCallFrameFragment &DF,
                              bool &WasRelaxed) const {
     return false;
+  }
+
+  // Defined by linker relaxation targets to possibly emit LEB128 relocations
+  // and set Value at the relocated location.
+  virtual std::pair<bool, bool>
+  relaxLEB128(const MCAssembler &Asm, MCLEBFragment &LF, int64_t &Value) const {
+    return std::make_pair(false, false);
   }
 
   /// @}
@@ -214,9 +217,9 @@ public:
   virtual bool writeNopData(raw_ostream &OS, uint64_t Count,
                             const MCSubtargetInfo *STI) const = 0;
 
-  /// Give backend an opportunity to finish layout after relaxation
-  virtual void finishLayout(MCAssembler const &Asm,
-                            MCAsmLayout &Layout) const {}
+  // Return true if fragment offsets have been adjusted and an extra layout
+  // iteration is needed.
+  virtual bool finishLayout(const MCAssembler &Asm) const { return false; }
 
   /// Handle any target-specific assembler flags. By default, do nothing.
   virtual void handleAssemblerFlag(MCAssemblerFlag Flag) {}

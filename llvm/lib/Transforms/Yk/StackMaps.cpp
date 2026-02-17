@@ -87,7 +87,7 @@ public:
               }
 
               if (CF->isDeclaration() &&
-                  !CF->getName().startswith("__yk_promote")) {
+                  !CF->getName().starts_with("__yk_promote")) {
                 continue;
               }
             }
@@ -97,7 +97,7 @@ public:
             // include the value computed by `I` itself (since that doesn't
             // exist at the time of the call).
             SMCalls.push_back({&I, LA.getLiveVarsBefore(&I)});
-            if (CF && CF->getName().startswith("__yk_promote")) {
+            if (CF && CF->getName().starts_with("__yk_promote")) {
               // If it's a call to yk_promote* then the return value of the
               // promotion needs to be tracked too. This is because the trace
               // builder will recognise calls to yk_promote specially and

@@ -95,7 +95,7 @@ static RValue PerformReturnAdjustment(CodeGenFunction &CGF,
       CGF,
       Address(ReturnValue, CGF.ConvertTypeForMem(ResultType->getPointeeType()),
               ClassAlign),
-      Thunk.Return);
+      ClassDecl, Thunk.Return);
 
   if (NullCheckValue) {
     CGF.Builder.CreateBr(AdjustEnd);
@@ -131,6 +131,12 @@ static void resolveTopLevelMetadata(llvm::Function *Fn,
   // they are referencing.
   for (auto &BB : *Fn) {
     for (auto &I : BB) {
+      for (llvm::DbgVariableRecord &DVR :
+           llvm::filterDbgVars(I.getDbgRecordRange())) {
+        auto *DILocal = DVR.getVariable();
+        if (!DILocal->isResolved())
+          DILocal->resolve();
+      }
       if (auto *DII = dyn_cast<llvm::DbgVariableIntrinsic>(&I)) {
         auto *DILocal = DII->getVariable();
         if (!DILocal->isResolved())
@@ -201,21 +207,22 @@ CodeGenFunction::GenerateVarArgsThunk(llvm::Function *Fn,
 
   // Find the first store of "this", which will be to the alloca associated
   // with "this".
-  Address ThisPtr =
-      Address(&*AI, ConvertTypeForMem(MD->getFunctionObjectParameterType()),
-              CGM.getClassPointerAlignment(MD->getParent()));
+  Address ThisPtr = makeNaturalAddressForPointer(
+      &*AI, MD->getFunctionObjectParameterType(),
+      CGM.getClassPointerAlignment(MD->getParent()));
   llvm::BasicBlock *EntryBB = &Fn->front();
   llvm::BasicBlock::iterator ThisStore =
       llvm::find_if(*EntryBB, [&](llvm::Instruction &I) {
-        return isa<llvm::StoreInst>(I) &&
-               I.getOperand(0) == ThisPtr.getPointer();
+        return isa<llvm::StoreInst>(I) && I.getOperand(0) == &*AI;
       });
   assert(ThisStore != EntryBB->end() &&
          "Store of this should be in entry block?");
   // Adjust "this", if necessary.
   Builder.SetInsertPoint(&*ThisStore);
-  llvm::Value *AdjustedThisPtr =
-      CGM.getCXXABI().performThisAdjustment(*this, ThisPtr, Thunk.This);
+
+  const CXXRecordDecl *ThisValueClass = Thunk.ThisType->getPointeeCXXRecordDecl();
+  llvm::Value *AdjustedThisPtr = CGM.getCXXABI().performThisAdjustment(
+      *this, ThisPtr, ThisValueClass, Thunk);
   AdjustedThisPtr = Builder.CreateBitCast(AdjustedThisPtr,
                                           ThisStore->getOperand(0)->getType());
   ThisStore->setOperand(0, AdjustedThisPtr);
@@ -302,10 +309,15 @@ void CodeGenFunction::EmitCallAndReturnForThunk(llvm::FunctionCallee Callee,
   const CXXMethodDecl *MD = cast<CXXMethodDecl>(CurGD.getDecl());
 
   // Adjust the 'this' pointer if necessary
+  const CXXRecordDecl *ThisValueClass =
+      MD->getThisType()->getPointeeCXXRecordDecl();
+  if (Thunk)
+    ThisValueClass = Thunk->ThisType->getPointeeCXXRecordDecl();
+
   llvm::Value *AdjustedThisPtr =
-    Thunk ? CGM.getCXXABI().performThisAdjustment(
-                          *this, LoadCXXThisAddress(), Thunk->This)
-          : LoadCXXThis();
+      Thunk ? CGM.getCXXABI().performThisAdjustment(*this, LoadCXXThisAddress(),
+                                                    ThisValueClass, *Thunk)
+            : LoadCXXThis();
 
   // If perfect forwarding is required a variadic method, a method using
   // inalloca, or an unprototyped thunk, use musttail. Emit an error if this
@@ -465,10 +477,6 @@ void CodeGenFunction::generateThunk(llvm::Function *Fn,
 
   llvm::Constant *Callee = CGM.GetAddrOfFunction(GD, Ty, /*ForVTable=*/true);
 
-  // Fix up the function type for an unprototyped musttail call.
-  if (IsUnprototyped)
-    Callee = llvm::ConstantExpr::getBitCast(Callee, Fn->getType());
-
   // Make the call and return the result.
   EmitCallAndReturnForThunk(llvm::FunctionCallee(Fn->getFunctionType(), Callee),
                             &Thunk, IsUnprototyped);
@@ -503,10 +511,22 @@ llvm::Constant *CodeGenVTables::maybeEmitThunk(GlobalDecl GD,
   SmallString<256> Name;
   MangleContext &MCtx = CGM.getCXXABI().getMangleContext();
   llvm::raw_svector_ostream Out(Name);
-  if (const CXXDestructorDecl *DD = dyn_cast<CXXDestructorDecl>(MD))
-    MCtx.mangleCXXDtorThunk(DD, GD.getDtorType(), TI.This, Out);
-  else
-    MCtx.mangleThunk(MD, TI, Out);
+
+  if (const CXXDestructorDecl *DD = dyn_cast<CXXDestructorDecl>(MD)) {
+    MCtx.mangleCXXDtorThunk(DD, GD.getDtorType(), TI,
+                            /* elideOverrideInfo */ false, Out);
+  } else
+    MCtx.mangleThunk(MD, TI, /* elideOverrideInfo */ false, Out);
+
+  if (CGM.getContext().useAbbreviatedThunkName(GD, Name.str())) {
+    Name = "";
+    if (const CXXDestructorDecl *DD = dyn_cast<CXXDestructorDecl>(MD))
+      MCtx.mangleCXXDtorThunk(DD, GD.getDtorType(), TI,
+                              /* elideOverrideInfo */ true, Out);
+    else
+      MCtx.mangleThunk(MD, TI, /* elideOverrideInfo */ true, Out);
+  }
+
   llvm::Type *ThunkVTableTy = CGM.getTypes().GetFunctionTypeForVTable(GD);
   llvm::Constant *Thunk = CGM.GetAddrOfThunk(Name, ThunkVTableTy, GD);
 
@@ -537,11 +557,8 @@ llvm::Constant *CodeGenVTables::maybeEmitThunk(GlobalDecl GD,
                                      Name.str(), &CGM.getModule());
     CGM.SetLLVMFunctionAttributes(MD, FnInfo, ThunkFn, /*IsThunk=*/false);
 
-    // If needed, replace the old thunk with a bitcast.
     if (!OldThunkFn->use_empty()) {
-      llvm::Constant *NewPtrForOldDecl =
-          llvm::ConstantExpr::getBitCast(ThunkFn, OldThunkFn->getType());
-      OldThunkFn->replaceAllUsesWith(NewPtrForOldDecl);
+      OldThunkFn->replaceAllUsesWith(ThunkFn);
     }
 
     // Remove the old thunk.
@@ -800,7 +817,7 @@ void CodeGenVTables::addVTableComponent(ConstantArrayBuilder &builder,
     llvm::Constant *fnPtr;
 
     // Pure virtual member functions.
-    if (cast<CXXMethodDecl>(GD.getDecl())->isPure()) {
+    if (cast<CXXMethodDecl>(GD.getDecl())->isPureVirtual()) {
       if (!PureVirtualFn)
         PureVirtualFn =
             getSpecialVirtualFn(CGM.getCXXABI().GetPureVirtualCallName());
@@ -821,11 +838,17 @@ void CodeGenVTables::addVTableComponent(ConstantArrayBuilder &builder,
 
       nextVTableThunkIndex++;
       fnPtr = maybeEmitThunk(GD, thunkInfo, /*ForVTable=*/true);
+      if (CGM.getCodeGenOpts().PointerAuth.CXXVirtualFunctionPointers) {
+        assert(thunkInfo.Method &&  "Method not set");
+        GD = GD.getWithDecl(thunkInfo.Method);
+      }
 
     // Otherwise we can use the method definition directly.
     } else {
       llvm::Type *fnTy = CGM.getTypes().GetFunctionTypeForVTable(GD);
       fnPtr = CGM.GetAddrOfFunction(GD, fnTy, /*ForVTable=*/true);
+      if (CGM.getCodeGenOpts().PointerAuth.CXXVirtualFunctionPointers)
+        GD = getItaniumVTableContext().findOriginalMethod(GD);
     }
 
     if (useRelativeLayout()) {
@@ -843,6 +866,9 @@ void CodeGenVTables::addVTableComponent(ConstantArrayBuilder &builder,
       if (FnAS != GVAS)
         fnPtr =
             llvm::ConstantExpr::getAddrSpaceCast(fnPtr, CGM.GlobalsInt8PtrTy);
+      if (const auto &Schema =
+          CGM.getCodeGenOpts().PointerAuth.CXXVirtualFunctionPointers)
+        return builder.addSignedPointer(fnPtr, Schema, GD, QualType());
       return builder.add(fnPtr);
     }
   }
@@ -1312,7 +1338,10 @@ llvm::GlobalObject::VCallVisibility CodeGenModule::GetVCallVisibilityLevel(
 void CodeGenModule::EmitVTableTypeMetadata(const CXXRecordDecl *RD,
                                            llvm::GlobalVariable *VTable,
                                            const VTableLayout &VTLayout) {
-  if (!getCodeGenOpts().LTOUnit)
+  // Emit type metadata on vtables with LTO or IR instrumentation.
+  // In IR instrumentation, the type metadata is used to find out vtable
+  // definitions (for type profiling) among all global variables.
+  if (!getCodeGenOpts().LTOUnit && !getCodeGenOpts().hasProfileIRInstr())
     return;
 
   CharUnits ComponentWidth = GetTargetTypeStoreSize(getVTableComponentType());

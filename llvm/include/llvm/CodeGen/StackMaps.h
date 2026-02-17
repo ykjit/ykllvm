@@ -187,7 +187,7 @@ private:
 class StackMaps {
 public:
   struct Location {
-    enum LocationType {
+    enum LocationType : uint16_t {
       Unprocessed,
       Register,
       Direct,
@@ -196,27 +196,27 @@ public:
       ConstantIndex
     };
     LocationType Type = Unprocessed;
-    unsigned Size = 0;
-    unsigned Reg = 0;
-    int64_t Offset = 0;
+    uint16_t Size = 0;
+    uint16_t Reg = 0;
+    int32_t Offset = 0;
+
     /// Additional locations for this live variable. Positive values are
     /// registers in Dwarf notation. Negative values are offsets relative to
     /// RBP.
     std::set<int64_t> Extras;
 
     Location() = default;
-    Location(LocationType Type, unsigned Size, unsigned Reg, int64_t Offset, std::set<int64_t> Extras = {})
+    Location(LocationType Type, uint16_t Size, uint16_t Reg, int32_t Offset, std::set<int64_t> Extras = {})
         : Type(Type), Size(Size), Reg(Reg), Offset(Offset), Extras(Extras) {}
   };
 
   struct LiveOutReg {
-    unsigned short Reg = 0;
-    unsigned short DwarfRegNum = 0;
-    unsigned short Size = 0;
+    uint16_t Reg = 0;
+    uint16_t DwarfRegNum = 0;
+    uint16_t Size = 0;
 
     LiveOutReg() = default;
-    LiveOutReg(unsigned short Reg, unsigned short DwarfRegNum,
-               unsigned short Size)
+    LiveOutReg(uint16_t Reg, uint16_t DwarfRegNum, uint16_t Size)
         : Reg(Reg), DwarfRegNum(DwarfRegNum), Size(Size) {}
   };
 
@@ -321,14 +321,13 @@ private:
   CallsiteInfoList CSInfos;
   ConstantPool ConstPool;
   FnInfoMap FnInfos;
-  bool HasFramePointer;
 
   MachineInstr::const_mop_iterator
   parseOperand(MachineInstr::const_mop_iterator MOI,
                MachineInstr::const_mop_iterator MOE, LiveVarsVec &LiveVars,
                LiveOutVec &LiveOuts,
                DisjointLocationSets SpillOffsets = DisjointLocationSets(),
-               std::set<int64_t> TrackedRegisters = {}) const;
+               std::set<int64_t> TrackedRegisters = {});
 
   /// Specialized parser of statepoint operands.
   /// They do not directly correspond to StackMap record entries.
