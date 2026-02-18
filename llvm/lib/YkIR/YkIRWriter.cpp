@@ -820,6 +820,9 @@ private:
         // FIXME: We need to pass this through to our codegen.
         continue;
       }
+      if (Attr.getKindAsEnum() == Attribute::Range) {
+        continue;
+      }
       serialiseUnimplementedInstruction(
           I, FLCtxt, BBIdx, InstIdx,
           optional(Attr.getAsString() + " ret attr"));
