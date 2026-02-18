@@ -771,7 +771,8 @@ private:
         if (((Attr.getKindAsEnum() == Attribute::NonNull) ||
              (Attr.getKindAsEnum() == Attribute::NoUndef) ||
              (Attr.getKindAsEnum() == Attribute::NoUnwind) ||
-             (Attr.getKindAsEnum() == Attribute::Dereferenceable))) {
+             (Attr.getKindAsEnum() == Attribute::Dereferenceable) ||
+             (Attr.getKindAsEnum() == Attribute::ReadOnly))) {
           continue;
         }
         // "indicates that the annotated function will always return at least a
