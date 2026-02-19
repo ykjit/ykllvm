@@ -170,8 +170,9 @@ public:
 
     // And insert it after the load of the shadow stack pointer.
     DILocation *DIL = DILocation::get(F.getContext(), SP->getLine(), 0, SP);
-    DIB->insertDbgValueIntrinsic(SSPtr, DebugVar, DIB->createExpression(), DIL,
-                                 cast<LoadInst>(SSPtr)->getNextNode());
+    DIB->insertDbgValueIntrinsic(
+        SSPtr, DebugVar, DIB->createExpression(), DIL,
+        cast<LoadInst>(SSPtr)->getNextNode()->getIterator());
   }
 
   // Insert main's prologue.
@@ -183,7 +184,7 @@ public:
   // heap allocate memory for a shadow stack.
   CallInst *insertMainPrologue(Function *Main, size_t SFrameSize) {
     Module *M = Main->getParent();
-    Instruction *First = Main->getEntryBlock().getFirstNonPHI();
+    Instruction *First = &*Main->getEntryBlock().getFirstNonPHIIt();
     IRBuilder<> Builder(First);
 
     // Create some memory on the heap for the shadow stack.
@@ -198,7 +199,7 @@ public:
     if (SFrameSize > 0) {
       GetElementPtrInst *GEP = GetElementPtrInst::Create(
           Int8Ty, Malloc, {ConstantInt::get(Int32Ty, SFrameSize)}, "",
-          Malloc->getNextNode());
+          Malloc->getNextNode()->getIterator());
       // Update the global variable keeping track of the top of shadow stack.
       Builder.CreateStore(GEP, ShadowCurrent);
     } else {
@@ -285,8 +286,8 @@ public:
   // Returns the shadow stack pointer before more space is allocated. Local
   // variables for the shadow frame will be pointers relative to this.
   Value *insertShadowPrologue(Function &F, size_t AllocSize) {
-    Instruction *First = F.getEntryBlock().getFirstNonPHI();
-    IRBuilder<> Builder(First);
+    auto First = F.getEntryBlock().getFirstNonPHIIt();
+    IRBuilder<> Builder(&*First);
 
     // Load the shadow stack pointer out of the global variable.
     Value *InitSSPtr = Builder.CreateLoad(PtrTy, ShadowCurrent);
@@ -307,7 +308,8 @@ public:
     std::vector<GetElementPtrInst *> Instructions;
     for (auto [AI, Off] : Allocas) {
       GetElementPtrInst *GEP = GetElementPtrInst::Create(
-          Int8Ty, SSPtr, {ConstantInt::get(Int32Ty, Off)}, "", AI);
+          Int8Ty, SSPtr, {ConstantInt::get(Int32Ty, Off)}, "",
+          AI->getIterator());
       AI->replaceAllUsesWith(GEP);
       AI->removeFromParent();
       AI->deleteValue();
@@ -369,7 +371,7 @@ public:
     Int8Ty = Type::getInt8Ty(Context);
     PtrTy = PointerType::get(Context, 0);
     Int32Ty = Type::getInt32Ty(Context);
-    DataLayout DL(&M);
+    DataLayout DL(M.getDataLayoutStr());
     PointerSizedIntTy = DL.getIntPtrType(Context);
 
     GlobalVariable *ShadowSize =

@@ -83,7 +83,7 @@ public:
   /// @}
 };
 
-class MachObjectWriter : public MCObjectWriter {
+class MachObjectWriter final : public MCObjectWriter {
 public:
   struct DataRegionData {
     MachO::DataRegionType Kind;
@@ -141,7 +141,7 @@ private:
 
   std::vector<DataRegionData> DataRegions;
 
-  SectionAddrMap SectionAddress;
+  DenseMap<const MCSection *, uint64_t> SectionAddress;
 
   // List of sections in layout order. Virtual sections are after non-virtual
   // sections.
@@ -163,6 +163,9 @@ private:
 
   VersionInfoType VersionInfo{};
   VersionInfoType TargetVariantVersionInfo{};
+
+  // The list of linker options for LC_LINKER_OPTION.
+  std::vector<std::vector<std::string>> LinkerOptions;
 
   MachSymbolData *findSymbolData(const MCSymbol &Sym);
 
@@ -200,7 +203,6 @@ public:
   const llvm::SmallVectorImpl<MCSection *> &getSectionOrder() const {
     return SectionOrder;
   }
-  SectionAddrMap &getSectionAddressMap() { return SectionAddress; }
   MCLOHContainer &getLOHContainer() { return LOHContainer; }
 
   uint64_t getSectionAddress(const MCSection *Sec) const {
@@ -247,6 +249,10 @@ public:
     TargetVariantVersionInfo.Minor = Minor;
     TargetVariantVersionInfo.Update = Update;
     TargetVariantVersionInfo.SDKVersion = SDKVersion;
+  }
+
+  std::vector<std::vector<std::string>> &getLinkerOptions() {
+    return LinkerOptions;
   }
 
   /// @}
@@ -346,18 +352,6 @@ public:
 
   uint64_t writeObject(MCAssembler &Asm) override;
 };
-
-/// Construct a new Mach-O writer instance.
-///
-/// This routine takes ownership of the target writer subclass.
-///
-/// \param MOTW - The target specific Mach-O writer subclass.
-/// \param OS - The stream to write to.
-/// \returns The constructed object writer.
-std::unique_ptr<MCObjectWriter>
-createMachObjectWriter(std::unique_ptr<MCMachObjectTargetWriter> MOTW,
-                       raw_pwrite_stream &OS, bool IsLittleEndian);
-
 } // end namespace llvm
 
 #endif // LLVM_MC_MCMACHOBJECTWRITER_H

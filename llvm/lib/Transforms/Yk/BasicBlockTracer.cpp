@@ -147,7 +147,7 @@ struct YkBasicBlockTracer : public ModulePass {
           // need to check they appear first.
           Builder.SetInsertPoint(&*BB->getFirstInsertionPt());
           for (AllocaInst *AI : llvm::reverse(EntryAllocas)) {
-            AI->moveBefore(&*BB->getFirstInsertionPt());
+            AI->moveBefore(BB->getFirstInsertionPt());
           }
         }
 

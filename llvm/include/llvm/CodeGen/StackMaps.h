@@ -21,6 +21,8 @@
 #include <vector>
 #include <set>
 
+unsigned getDwarfRegNum(MCRegister Reg, const TargetRegisterInfo *TRI);
+
 namespace llvm {
 
 class AsmPrinter;
@@ -29,8 +31,6 @@ class MCExpr;
 class MCStreamer;
 class raw_ostream;
 class TargetRegisterInfo;
-
-unsigned getDwarfRegNum(unsigned Reg, const TargetRegisterInfo *TRI);
 
 /// MI-level stackmap operands.
 ///
@@ -42,7 +42,7 @@ public:
   enum { IDPos, NBytesPos };
 
 private:
-  const MachineInstr *MI;
+  const MachineInstr* MI;
 
 public:
   explicit StackMapOpers(const MachineInstr *MI);

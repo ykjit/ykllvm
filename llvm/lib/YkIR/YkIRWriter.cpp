@@ -1058,7 +1058,7 @@ private:
         GetElementPtrInst *G = nullptr;
         G = GetElementPtrInst::Create(GEP->getSourceElementType(),
                                       GEP->getPointerOperand(), Indices);
-        G->insertBefore(I);
+        G->insertBefore(I->getIterator());
         I->setOperand(0, G);
         serialiseGetElementPtrInst(G, FLCtxt, BBIdx, InstIdx);
       }
@@ -1189,7 +1189,7 @@ private:
     static_assert(sizeof(size_t) <= sizeof(uint64_t));
 
     APInt ConstOff(IdxBitWidth, 0);
-    MapVector<Value *, APInt> DynOffs;
+    SmallMapVector<Value *, APInt, 4> DynOffs;
     // Note: after this line, `ConstOff` is guaranteed to fit in the pointer
     // index type: LLVM will do any required wrap/truncation for us.
     bool CollectRes = I->collectOffset(DL, IdxBitWidth, DynOffs, ConstOff);
@@ -2116,7 +2116,7 @@ private:
 
 public:
   YkIRWriter(Module &M, MCStreamer &OutStreamer)
-      : M(M), OutStreamer(OutStreamer), DL(&M) {}
+      : M(M), OutStreamer(OutStreamer), DL(M.getDataLayoutStr()) {}
 
   // Return the purpose of a basic block (from BasicBlockTracer).
   BBPurpose getBBPurpose(BasicBlock *BB) {

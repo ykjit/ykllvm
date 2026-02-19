@@ -45,8 +45,6 @@ std::string teardownProfiler() {
 // We only parse AST here. This is enough for constexpr evaluation.
 bool compileFromString(StringRef Code, StringRef Standard, StringRef File,
                        llvm::StringMap<std::string> Headers = {}) {
-  CompilerInstance Compiler;
-  Compiler.createDiagnostics();
 
   llvm::IntrusiveRefCntPtr<llvm::vfs::InMemoryFileSystem> FS(
       new llvm::vfs::InMemoryFileSystem());
@@ -57,6 +55,8 @@ bool compileFromString(StringRef Code, StringRef Standard, StringRef File,
   }
   llvm::IntrusiveRefCntPtr<FileManager> Files(
       new FileManager(FileSystemOptions(), FS));
+  CompilerInstance Compiler;
+  Compiler.createDiagnostics(Files->getVirtualFileSystem());
   Compiler.setFileManager(Files.get());
 
   auto Invocation = std::make_shared<CompilerInvocation>();
@@ -76,18 +76,18 @@ bool compileFromString(StringRef Code, StringRef Standard, StringRef File,
 }
 
 std::string GetMetadata(json::Object *Event) {
-  std::string Metadata;
-  llvm::raw_string_ostream OS(Metadata);
+  std::string M;
+  llvm::raw_string_ostream OS(M);
   if (json::Object *Args = Event->getObject("args")) {
     if (auto Detail = Args->getString("detail"))
       OS << Detail;
     // Use only filename to not include os-specific path separators.
     if (auto File = Args->getString("file"))
-      OS << ", " << llvm::sys::path::filename(*File);
+      OS << (M.empty() ? "" : ", ") << llvm::sys::path::filename(*File);
     if (auto Line = Args->getInteger("line"))
       OS << ":" << *Line;
   }
-  return Metadata;
+  return M;
 }
 
 // Returns pretty-printed trace graph.
@@ -209,7 +209,7 @@ constexpr int slow_init_list[] = {1, 1, 2, 3, 5, 8, 13, 21}; // 25th line
   ASSERT_TRUE(compileFromString(Code, "-std=c++20", "test.cc"));
   std::string Json = teardownProfiler();
   ASSERT_EQ(R"(
-Frontend
+Frontend (test.cc)
 | ParseDeclarationOrFunctionDefinition (test.cc:2:1)
 | ParseDeclarationOrFunctionDefinition (test.cc:6:1)
 | | ParseFunctionDefinition (slow_func)
@@ -238,11 +238,53 @@ Frontend
             buildTraceGraph(Json));
 }
 
+TEST(TimeProfilerTest, ClassTemplateInstantiations) {
+  std::string Code = R"(
+    template<class T>
+    struct S
+    {
+      void foo() {}
+      void bar();
+    };
+
+    template struct S<double>; // explicit instantiation of S<double>
+
+    void user() {
+      S<int> a; // implicit instantiation of S<int>
+      S<float>* b;
+      b->foo(); // implicit instatiation of S<float> and S<float>::foo()
+    }
+  )";
+
+  setupProfiler();
+  ASSERT_TRUE(compileFromString(Code, "-std=c++20", "test.cc"));
+  std::string Json = teardownProfiler();
+  ASSERT_EQ(R"(
+Frontend (test.cc)
+| ParseClass (S)
+| InstantiateClass (S<double>, test.cc:9)
+| InstantiateFunction (S<double>::foo, test.cc:5)
+| ParseDeclarationOrFunctionDefinition (test.cc:11:5)
+| | ParseFunctionDefinition (user)
+| | | InstantiateClass (S<int>, test.cc:3)
+| | | InstantiateClass (S<float>, test.cc:3)
+| | | DeferInstantiation (S<float>::foo)
+| PerformPendingInstantiations
+| | InstantiateFunction (S<float>::foo, test.cc:5)
+)",
+            buildTraceGraph(Json));
+}
+
 TEST(TimeProfilerTest, TemplateInstantiations) {
   std::string B_H = R"(
     template <typename T>
-    T fooB(T t) {
+    T fooC(T t) {
       return T();
+    }
+
+    template <typename T>
+    constexpr T fooB(T t) {
+      return fooC(t);
     }
 
     #define MacroTemp(x) template <typename T> void foo##x(T) { T(); }
@@ -266,15 +308,20 @@ TEST(TimeProfilerTest, TemplateInstantiations) {
                                 /*Headers=*/{{"a.h", A_H}, {"b.h", B_H}}));
   std::string Json = teardownProfiler();
   ASSERT_EQ(R"(
-Frontend
+Frontend (test.cc)
+| ParseFunctionDefinition (fooC)
 | ParseFunctionDefinition (fooB)
 | ParseFunctionDefinition (fooMTA)
 | ParseFunctionDefinition (fooA)
 | ParseDeclarationOrFunctionDefinition (test.cc:3:5)
 | | ParseFunctionDefinition (user)
+| | | DeferInstantiation (fooA<int>)
 | PerformPendingInstantiations
 | | InstantiateFunction (fooA<int>, a.h:7)
-| | | InstantiateFunction (fooB<int>, b.h:3)
+| | | InstantiateFunction (fooB<int>, b.h:8)
+| | | | DeferInstantiation (fooC<int>)
+| | | DeferInstantiation (fooMTA<int>)
+| | | InstantiateFunction (fooC<int>, b.h:3)
 | | | InstantiateFunction (fooMTA<int>, a.h:4)
 )",
             buildTraceGraph(Json));
@@ -291,7 +338,7 @@ struct {
   ASSERT_TRUE(compileFromString(Code, "-std=c99", "test.c"));
   std::string Json = teardownProfiler();
   ASSERT_EQ(R"(
-Frontend
+Frontend (test.c)
 | ParseDeclarationOrFunctionDefinition (test.c:2:1)
 | | isIntegerConstantExpr (<test.c:3:18>)
 | | EvaluateKnownConstIntCheckOverflow (<test.c:3:18>)
