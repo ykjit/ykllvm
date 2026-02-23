@@ -130,7 +130,7 @@ public:
       // This program doesn't have a control point. We can't do any
       // transformations on it, but we do still want to compile it.
       Context.diagnose(DiagnosticInfoInlineAsm(
-          "ykllvm couldn't find the call to `yk_mt_control_point()`",
+          0, "ykllvm couldn't find the call to `yk_mt_control_point()`",
           DS_Warning));
       return false;
     }
@@ -185,12 +185,12 @@ public:
 
       IRBuilder<> Builder(OldCtrlPointCall);
 
-      const Intrinsic::ID SMFuncID = Function::lookupIntrinsicID(CP_PPNAME);
+      const Intrinsic::ID SMFuncID = Intrinsic::lookupIntrinsicID(CP_PPNAME);
       if (SMFuncID == Intrinsic::not_intrinsic) {
         Context.emitError("can't find stackmap()");
         return false;
       }
-      Function *SMFunc = Intrinsic::getDeclaration(&M, SMFuncID);
+      Function *SMFunc = Intrinsic::getOrInsertDeclaration(&M, SMFuncID);
       assert(SMFunc != nullptr);
 
       // Get live variables.

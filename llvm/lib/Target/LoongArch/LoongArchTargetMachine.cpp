@@ -35,9 +35,12 @@ extern "C" LLVM_EXTERNAL_VISIBILITY void LLVMInitializeLoongArchTarget() {
   RegisterTargetMachine<LoongArchTargetMachine> Y(getTheLoongArch64Target());
   auto *PR = PassRegistry::getPassRegistry();
   initializeLoongArchDeadRegisterDefinitionsPass(*PR);
+  initializeLoongArchMergeBaseOffsetOptPass(*PR);
   initializeLoongArchOptWInstrsPass(*PR);
   initializeLoongArchPreRAExpandPseudoPass(*PR);
+  initializeLoongArchExpandPseudoPass(*PR);
   initializeLoongArchDAGToDAGISelLegacyPass(*PR);
+  initializeLoongArchExpandAtomicPseudoPass(*PR);
 }
 
 static cl::opt<bool> EnableLoongArchDeadRegisterElimination(
@@ -68,7 +71,7 @@ static CodeModel::Model
 getEffectiveLoongArchCodeModel(const Triple &TT,
                                std::optional<CodeModel::Model> CM) {
   if (!CM)
-    return CodeModel::Small;
+    return TT.isArch64Bit() ? CodeModel::Medium : CodeModel::Small;
 
   switch (*CM) {
   case CodeModel::Small:
@@ -88,9 +91,9 @@ LoongArchTargetMachine::LoongArchTargetMachine(
     const Target &T, const Triple &TT, StringRef CPU, StringRef FS,
     const TargetOptions &Options, std::optional<Reloc::Model> RM,
     std::optional<CodeModel::Model> CM, CodeGenOptLevel OL, bool JIT)
-    : LLVMTargetMachine(T, computeDataLayout(TT), TT, CPU, FS, Options,
-                        getEffectiveRelocModel(TT, RM),
-                        getEffectiveLoongArchCodeModel(TT, CM), OL),
+    : CodeGenTargetMachineImpl(T, computeDataLayout(TT), TT, CPU, FS, Options,
+                               getEffectiveRelocModel(TT, RM),
+                               getEffectiveLoongArchCodeModel(TT, CM), OL),
       TLOF(std::make_unique<TargetLoweringObjectFileELF>()) {
   initAsmInfo();
 }
@@ -193,7 +196,7 @@ bool LoongArchPassConfig::addInstSelector() {
 
 TargetTransformInfo
 LoongArchTargetMachine::getTargetTransformInfo(const Function &F) const {
-  return TargetTransformInfo(LoongArchTTIImpl(this, F));
+  return TargetTransformInfo(std::make_unique<LoongArchTTIImpl>(this, F));
 }
 
 void LoongArchPassConfig::addPreEmitPass() { addPass(&BranchRelaxationPassID); }
@@ -216,6 +219,8 @@ void LoongArchPassConfig::addMachineSSAOptimization() {
 
 void LoongArchPassConfig::addPreRegAlloc() {
   addPass(createLoongArchPreRAExpandPseudoPass());
+  if (TM->getOptLevel() != CodeGenOptLevel::None)
+    addPass(createLoongArchMergeBaseOffsetOptPass());
 }
 
 bool LoongArchPassConfig::addRegAssignAndRewriteFast() {

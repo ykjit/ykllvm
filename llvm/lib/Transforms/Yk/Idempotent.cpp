@@ -50,7 +50,7 @@ public:
   // If necessary, create a declaration to the idempotent recorder function for
   // the type `Ty`.
   Function *getRecorderFunc(Module &M, Type *Ty) {
-    DataLayout DL(&M);
+    DataLayout DL(M.getDataLayoutStr());
 
     if (IntegerType *ITy = dyn_cast<IntegerType>(Ty)) {
       std::optional<std::string> OptRecFName = intRecorderFuncName(ITy);

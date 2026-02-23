@@ -44,7 +44,7 @@ public:
     LLVMContext &Context = M.getContext();
 
     const Intrinsic::ID SMFuncID =
-        Function::lookupIntrinsicID("llvm.experimental.stackmap");
+        Intrinsic::lookupIntrinsicID("llvm.experimental.stackmap");
     if (SMFuncID == Intrinsic::not_intrinsic) {
       Context.emitError("can't find stackmap()");
       return false;
@@ -115,7 +115,7 @@ public:
       }
     }
 
-    Function *SMFunc = Intrinsic::getDeclaration(&M, SMFuncID);
+    Function *SMFunc = Intrinsic::getOrInsertDeclaration(&M, SMFuncID);
     assert(SMFunc != nullptr);
 
     uint64_t Count = StackmapIDStart;

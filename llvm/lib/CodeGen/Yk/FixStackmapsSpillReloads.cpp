@@ -221,7 +221,8 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
             MI.getOpcode() != TargetOpcode::PATCHPOINT) {
           MachineOperand Op = MI.getOperand(0);
           if (Op.isGlobal() &&
-              Op.getGlobal()->getGlobalIdentifier() == YK_TRACE_FUNCTION) {
+              (Op.getGlobal()->getName() == YK_TRACE_FUNCTION)) {
+            // Op.getGlobal()->getGlobalIdentifier() == YK_TRACE_FUNCTION) {
             // `YK_TRACE_FUNCTION` calls don't require stackmaps so we don't
             // need to adjust anything here. In fact, doing so will skew any
             // stackmap that follows.

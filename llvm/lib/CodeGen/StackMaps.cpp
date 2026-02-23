@@ -214,7 +214,7 @@ unsigned StackMaps::getNextMetaArgIdx(const MachineInstr *MI, unsigned CurIdx) {
 }
 
 /// Go up the super-register chain until we hit a valid dwarf register number.
-unsigned llvm::getDwarfRegNum(unsigned Reg, const TargetRegisterInfo *TRI) {
+unsigned getDwarfRegNum(MCRegister Reg, const TargetRegisterInfo *TRI) {
   int RegNum;
   for (MCPhysReg SR : TRI->superregs_inclusive(Reg)) {
     RegNum = TRI->getDwarfRegNum(SR, false);
@@ -313,19 +313,16 @@ StackMaps::parseOperand(MachineInstr::const_mop_iterator MOI,
     if (MOI->isImplicit())
       return ++MOI;
 
-    if (MOI->isUndef()) {
-      // Record `undef` register as constant. Use same value as ISel uses.
-      Locs.emplace_back(Location::Constant, sizeof(int64_t), 0, 0xFEFEFEFE);
-      return ++MOI;
-    }
-
     assert(MOI->getReg().isPhysical() &&
            "Virtreg operands should have been rewritten before now.");
     const TargetRegisterClass *RC = TRI->getMinimalPhysRegClass(MOI->getReg());
     assert(!MOI->getSubReg() && "Physical subreg still around.");
 
+    unsigned Offset = 0;
+    unsigned DwarfRegNum = getDwarfRegNum(MOI->getReg(), TRI);
+    MCRegister LLVMRegNum = *TRI->getLLVMRegNum(DwarfRegNum, false);
+    unsigned SubRegIdx = TRI->getSubRegIndex(LLVMRegNum, MOI->getReg());
 
-    signed Offset = 0;
     // Check for any additional mappings in the spillmap and add them to his
     // location to be later encoded into stackmaps. A typical case where we need
     // to record multiple sources is the following (annotated with SpillMap
@@ -340,15 +337,11 @@ StackMaps::parseOperand(MachineInstr::const_mop_iterator MOI,
     // and during deoptimisation we need to make sure we write the value back to
     // each one of them. Note, that the stackmap may track either of %rbx or
     // %rcx, resulting in different ways below to retrieve the mappings.
-    Register R = MOI->getReg();
-    Register DwarfRegNum = getDwarfRegNum(R, TRI);
     std::set<int64_t> Extras;
     if (MOI->isReg()) {
       Extras = SpillOffsets.getOthersInSet(DwarfRegNum);
     }
 
-    unsigned LLVMRegNum = *TRI->getLLVMRegNum(DwarfRegNum, false);
-    unsigned SubRegIdx = TRI->getSubRegIndex(LLVMRegNum, R);
     if (SubRegIdx)
       Offset = TRI->getSubRegIdxOffset(SubRegIdx);
 
@@ -633,37 +626,13 @@ void StackMaps::recordStackMapOpers(const MCSymbol &MILabel,
     while (MOI != MOE)
       MOI = parseOperand(MOI, MOE, LiveVars, LiveOuts, SpillOffsets, TrackedRegisters);
 
-  // XXXSYNCXXX: Not sure if this needs merge or can be removed.
-  // // Move large constants into the constant pool.
-  // for (auto &Locations : LiveVars) {
-  //   for (auto &Loc : Locations) {
-  //     // Constants are encoded as sign-extended integers.
-  //     // -1 is directly encoded as .long 0xFFFFFFFF with no constant pool.
-  //     if (Loc.Type == Location::Constant && !isInt<32>(Loc.Offset)) {
-  //       Loc.Type = Location::ConstantIndex;
-  //       // ConstPool is intentionally a MapVector of 'uint64_t's (as
-  //       // opposed to 'int64_t's).  We should never be in a situation
-  //       // where we have to insert either the tombstone or the empty
-  //       // keys into a map, and for a DenseMap<uint64_t, T> these are
-  //       // (uint64_t)0 and (uint64_t)-1.  They can be and are
-  //       // represented using 32 bit integers.
-  //       assert((uint64_t)Loc.Offset != DenseMapInfo<uint64_t>::getEmptyKey() &&
-  //              (uint64_t)Loc.Offset !=
-  //                  DenseMapInfo<uint64_t>::getTombstoneKey() &&
-  //              "empty and tombstone keys should fit in 32 bits!");
-  //       auto Result = ConstPool.insert(std::make_pair(Loc.Offset, Loc.Offset));
-  //       Loc.Offset = Result.first - ConstPool.begin();
-  //     }
-  //   }
-  // }
-
   // Due to the way we parse the operands, there will always be a trailing
   // empty LocationVec, which we can now strip. This also serves as a useful
   // sanity check.
   if (LiveVars.back().size() != 0) {
     // The user can see this if something else went wrong in the backend,
     // thus leaving the stackmap data in an inconsistent state.
-    MI.emitError("expected empty LocationVec");
+    MI.emitGenericError("expected empty LocationVec");
   } else {
     LiveVars.pop_back();
   }
