@@ -3,7 +3,7 @@ Frame and Thread Format
 
 LLDB has a facility to allow users to define the format of the information that
 generates the descriptions for threads and stack frames. Typically when your
-program stops at a breakpoint you will get two lines that describes why your
+program stops at a breakpoint you will get two lines that describe why your
 thread stopped and where:
 
 ::
@@ -89,9 +89,13 @@ A complete list of currently supported format string variables is listed below:
 +---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | ``function.name-without-args``                    | The name of the current function without arguments and values (used to include a function name in-line in the ``disassembly-format``)                                                                                                                                                       |
 +---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ``function.name-qualifiers``                      | Any qualifiers added after the name of a function and before its arguments or template arguments. E.g., for Swift the name qualifier for ``closure #1 in A.foo<Int>()`` is `` in A.foo``.                                                                                                   |
++---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | ``function.basename``                             | The basename of the current function depending on the frame's language. E.g., for C++ the basename for ``void ns::foo<float>::bar<int>(int) const`` is ``bar``.                                                                                                                             |
 +---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-| ``function.scope``                                |  The scope qualifiers of the current function depending on the frame's language. E.g., for C++ the scope for ``void ns::foo<float>::bar<int>(int) const`` is ``ns::foo<float>``.                                                                                                            |
+| ``function.prefix``                               | Any prefix added to the demangled function name of the current function. This depends on the frame's language. E.g., for C++ the prefix will always be empty.                                                                                                                               |
++---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ``function.scope``                                | The scope qualifiers of the current function depending on the frame's language. E.g., for C++ the scope for ``void ns::foo<float>::bar<int>(int) const`` is ``ns::foo<float>``.                                                                                                             |
 +---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | ``function.template-arguments``                   | The template arguments of the current function depending on the frame's language. E.g., for C++ the template arguments for ``void ns::foo<float>::bar<int>(int) const`` are ``<float>``.                                                                                                    |
 +---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
@@ -106,6 +110,8 @@ A complete list of currently supported format string variables is listed below:
 | ``function.return-right``                         | The return type to the right of the demangled function name of the current function. This depends on the frame's language. In ``void ns::foo(int)`` there is no ``function.return-right`` so this would correspond to an empty string. However, in some cases, particularly for functions   |
 |                                                   | returning function pointers, part of the return type is to the right of the function name. E.g., for ``void (*ns::func(float))(int)`` the ``function.return-left`` would be ``void (*`` and the ``function.return-right`` would be ``)(int)``.                                              |
 +---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ``function.suffix``                               | Any suffix added to the demangled function name of the current function. This depends on the frame's language. E.g., for C++ the suffix for ``void ns::foo(int) (.cold)`` is '(.cold).                                                                                                      |
++---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | ``function.mangled-name``                         | The mangled name of the current function or symbol.                                                                                                                                                                                                                                         |
 +---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | ``function.pc-offset``                            | The program counter offset within the current function or symbol                                                                                                                                                                                                                            |
@@ -117,6 +123,8 @@ A complete list of currently supported format string variables is listed below:
 | ``function.changed``                              | Will evaluate to true when the line being formatted is a different symbol context from the previous line (may be used in ``disassembly-format`` to print the new function name on a line by itself at the start of a new function).  Inlined functions are not considered for this variable |
 +---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | ``function.initial-function``                     | Will evaluate to true if this is the start of the first function, as opposed to a change of functions (may be used in ``disassembly-format`` to print the function name for the first function being disassembled)                                                                          |
++---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| ``function.is-inlined``                           | Will evaluate to true if this function was inlined                                                                                                                                                                                                                                          |
 +---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | ``line.file.basename``                            | The line table entry basename to the file for the current line entry in the current frame.                                                                                                                                                                                                  |
 +---------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
@@ -186,7 +194,7 @@ you to desensitize control characters and also emit non-printable characters.
 Desensitizing Characters in the Format String
 ---------------------------------------------
 
-The backslash control character allows your to enter the typical ``\a``,
+The backslash control character allows you to enter the typical ``\a``,
 ``\b``, ``\f``, ``\n``, ``\r``, ``\t``, ``\v``, ``\\``, characters and along
 with the standard octal representation ``\0123`` and hex ``\xAB`` characters.
 This allows you to enter escape characters into your format strings and will
@@ -196,8 +204,8 @@ Scoping
 -------
 
 Many times the information that you might have in your prompt might not be
-available and you won``t want it to print out if it isn``t valid. To take care
-of this you can enclose everything that must resolve into a scope. A scope is
+available and you won't want it to print out if it isn't valid. To take care
+of this you can enclose everything that must resolve into a scope. A scope
 starts with ``{`` and ends with ``}``. For example in order to only display the
 current frame line table entry basename and line number when the information is
 available for the current frame:
@@ -263,7 +271,7 @@ thread information:
     frame #0: 0x0000000100000e85 a.out`main + 4 at test.c:19
     frame #1: 0x0000000100000e40 a.out`start + 52
 
-The frame related variables are:
+The frame-related variables are:
 
 - ``${file.*}``
 - ``${frame.*}``
@@ -323,12 +331,15 @@ _____________________
 The function names displayed in backtraces/``frame info``/``thread info`` are the demangled names of functions. On some platforms (like ones using Itanium the mangling scheme), LLDB supports decomposing these names into fine-grained components. These are currently:
 
 - ``${function.return-left}``
+- ``${function.prefix}``
 - ``${function.scope}``
 - ``${function.basename}``
+- ``${function.name-qualifiers}``
 - ``${function.template-arguments}``
 - ``${function.formatted-arguments}``
 - ``${function.qualifiers}``
 - ``${function.return-right}``
+- ``${function.suffix}``
 
 Each language plugin decides how to handle these variables. For C++, LLDB uses these variables to dictate how function names are formatted. This can be customized using the ``plugin.cplusplus.display.function-name-format`` LLDB setting.
 
@@ -336,19 +347,19 @@ E.g., the following setting would reconstruct the entire function name (and is L
 
 ::
 
-    (lldb) settings set plugin.cplusplus.dislpay.function-name-format "${function.return-left}${function.scope}${function.basename}${function.template-arguments}${function.formatted-arguments}${function.qualifiers}${function.return-right}"
+    (lldb) settings set plugin.cplusplus.display.function-name-format "${function.return-left}${function.scope}${function.basename}${function.template-arguments}${function.formatted-arguments}${function.qualifiers}${function.return-right}${function.suffix}"
 
-If a user wanted to omit the return type and template arguments of C++ function names one could do:
+If a user wanted to only print the name and arguments of a C++ function one could do:
 
 ::
 
-    (lldb) settings set plugin.cplusplus.dislpay.function-name-format "${function.scope}${function.basename}${function.formatted-arguments}${function.qualifiers}"
+    (lldb) settings set plugin.cplusplus.display.function-name-format "${function.scope}${function.basename}${function.formatted-arguments}"
 
 
 Then the following would highlight just the basename in green:
 
 ::
 
-    (lldb) settings set plugin.cplusplus.dislpay.function-name-format "${function.scope}${ansi.fg.yellow}${function.basename}${ansi.normal}${function.formatted-arguments}${function.qualifiers}"
+    (lldb) settings set plugin.cplusplus.display.function-name-format "${function.scope}${ansi.fg.yellow}${function.basename}${ansi.normal}${function.formatted-arguments}"
 
 The ``${function.name-with-args}`` by default asks the language plugin whether it supports a language-specific ``function-name-format`` (e.g., the ``plugin.cplusplus.display.function-name-format`` for C++), and if it does, uses it. Otherwise it will display the demangled function name.

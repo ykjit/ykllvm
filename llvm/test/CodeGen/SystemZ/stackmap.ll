@@ -85,7 +85,7 @@
 ; CHECK-NEXT:   .short  8
 ; CHECK-NEXT:   .short  0
 ; CHECK-NEXT:   .short  0
-; CHECK-NEXT:   .long   65535
+; CHECK-NEXT:   .long   -1
 ; SmallConstant
 ; CHECK-NEXT:   .byte   1
 ; CHECK-NEXT:   .byte   4
@@ -93,7 +93,7 @@
 ; CHECK-NEXT:   .short  8
 ; CHECK-NEXT:   .short  0
 ; CHECK-NEXT:   .short  0
-; CHECK-NEXT:   .long   65535
+; CHECK-NEXT:   .long   -1
 ; SmallConstant
 ; CHECK-NEXT:   .byte   1
 ; CHECK-NEXT:   .byte   4

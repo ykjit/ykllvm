@@ -1,4 +1,4 @@
-//===- YkIR/YkIRWRiter.cpp -- Yk JIT IR Serialiaser---------------------===//
+//===- YkIR/YkIRWRiter.cpp -- Yk JIT IR Serialiaser--------------------===//
 //
 // Converts an LLVM module into Yk's on-disk AOT IR.
 //
@@ -521,11 +521,18 @@ private:
                                    unsigned &InstIdx) {
     assert(I->getNumOperands() == 2);
 
-    // We don't yet support:
-    //  - fast math flags (for float operations).
-    //  - vector variants
-    if ((isa<FPMathOperator>(I) && (I->getFastMathFlags().any())) ||
-        I->getType()->isVectorTy()) {
+    if (isa<FPMathOperator>(I)) {
+      // We only allow the `nnan` fast math flag. For now, we just ignore it.
+      // It may be useful to forward to the JIT later.
+      auto FMF = I->getFastMathFlags();
+      FMF.setNoNaNs(false);
+      if (!FMF.none()) {
+        serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
+        return;
+      }
+    }
+    //  We don't support vector variants.
+    if (I->getType()->isVectorTy()) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
       return;
     }
@@ -684,7 +691,7 @@ private:
     serialiseOperand(I, FLCtxt, I->getOperand(0));
 
     // safepoint:
-    CallInst *SMI = dyn_cast<CallInst>(I->getNextNonDebugInstruction());
+    CallInst *SMI = dyn_cast<CallInst>(I->getNextNode());
     serialiseStackmapCall(SMI, FLCtxt);
 
     FLCtxt.updateVLMap(I, {getIndex(I->getParent()), InstIdx});
@@ -733,7 +740,7 @@ private:
       serialiseOperand(I, FLCtxt, I->getOperand(OI));
     }
     // safepoint
-    CallInst *SMI = dyn_cast<CallInst>(I->getNextNonDebugInstruction());
+    CallInst *SMI = dyn_cast<CallInst>(I->getNextNode());
     serialiseStackmapCall(SMI, FLCtxt);
 
     // If the return type is non-void, then this defines a local.
@@ -967,7 +974,7 @@ private:
       if (IsCtrlPointCall) {
         SMI = dyn_cast<CallInst>(I);
       } else {
-        SMI = dyn_cast<CallInst>(I->getNextNonDebugInstruction());
+        SMI = dyn_cast<CallInst>(I->getNextNode());
       }
       serialiseStackmapCall(SMI, FLCtxt);
     } else {
@@ -1007,7 +1014,7 @@ private:
       // false_bb:
       serialiseBlockLabel(I->getSuccessor(1));
 
-      CallInst *SMI = dyn_cast<CallInst>(I->getPrevNonDebugInstruction());
+      CallInst *SMI = dyn_cast<CallInst>(I->getPrevNode());
       serialiseStackmapCall(SMI, FLCtxt);
     }
     InstIdx++;
@@ -1497,7 +1504,7 @@ private:
       serialiseBlockLabel(Case.getCaseSuccessor());
     }
     // safepoint:
-    CallInst *SMI = dyn_cast<CallInst>(I->getPrevNonDebugInstruction());
+    CallInst *SMI = dyn_cast<CallInst>(I->getPrevNode());
     serialiseStackmapCall(SMI, FLCtxt);
     InstIdx++;
   }
@@ -2275,9 +2282,10 @@ MCSection *createYkIRSection(MCContext &Ctx, const MCSection *TextSec) {
   // Ensure the loader loads it.
   Flags |= ELF::SHF_ALLOC;
 
-  return Ctx.getELFSection(SectionName, ELF::SHT_LLVM_BB_ADDR_MAP, Flags, 0,
-                           GroupName, true, ElfSec->getUniqueID(),
-                           cast<MCSymbolELF>(TextSec->getBeginSymbol()));
+  return Ctx.getELFSection(
+      SectionName, ELF::SHT_LLVM_BB_ADDR_MAP, Flags, 0, GroupName, true,
+      ElfSec->getUniqueID(),
+      static_cast<const MCSymbolELF *>(TextSec->getBeginSymbol()));
 }
 
 // Emit a start/end IR marker.
