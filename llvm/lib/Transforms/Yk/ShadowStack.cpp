@@ -89,6 +89,7 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "llvm/IR/Verifier.h"
@@ -307,6 +308,24 @@ public:
   rewriteAllocas(DataLayout &DL, AllocaVector &Allocas, Value *SSPtr) {
     std::vector<GetElementPtrInst *> Instructions;
     for (auto [AI, Off] : Allocas) {
+      // If the alloca was annotated by lifetime intrinsics, we have to erase
+      // them or LLVM gets upset:
+      // "llvm.lifetime.start/end can only be used on alloca or poison"
+      std::vector<IntrinsicInst *> Delete;
+      for (User *U : AI->users()) {
+        if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(U)) {
+          Intrinsic::ID ID = II->getIntrinsicID();
+          if (ID == Intrinsic::lifetime_start ||
+              ID == Intrinsic::lifetime_end) {
+            Delete.push_back(II);
+          }
+        }
+      }
+      for (IntrinsicInst *D : Delete) {
+        D->removeFromParent();
+        D->deleteValue();
+      }
+
       GetElementPtrInst *GEP = GetElementPtrInst::Create(
           Int8Ty, SSPtr, {ConstantInt::get(Int32Ty, Off)}, "",
           AI->getIterator());

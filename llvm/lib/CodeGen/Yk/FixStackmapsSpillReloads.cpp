@@ -196,10 +196,8 @@ public:
 char FixStackmapsSpillReloads::ID = 0;
 char &llvm::FixStackmapsSpillReloadsID = FixStackmapsSpillReloads::ID;
 
-INITIALIZE_PASS_BEGIN(FixStackmapsSpillReloads, DEBUG_TYPE,
-                      "Fixup Stackmap Spills", false, false)
-INITIALIZE_PASS_END(FixStackmapsSpillReloads, DEBUG_TYPE,
-                    "Fixup Stackmap Spills", false, false)
+INITIALIZE_PASS(FixStackmapsSpillReloads, DEBUG_TYPE, "Fixup Stackmap Spills",
+                false, false)
 
 const TargetRegisterInfo *TRI;
 

@@ -1,5 +1,3 @@
-# yk: broken upstream at the time we synced.
-# XFAIL: *
 # Test to check if machine function splitter still produces the right backtraces
 # with lldb when a function is split into a hot and cold part and the cold part
 # is executed.  The cold part has the same function symbol name but with a

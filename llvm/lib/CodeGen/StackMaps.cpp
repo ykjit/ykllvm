@@ -653,10 +653,10 @@ void StackMaps::recordStackMapOpers(const MCSymbol &MILabel,
       MFI.hasVarSizedObjects() || RegInfo->hasStackRealignment(*(AP.MF));
   uint64_t FrameSize = HasDynamicFrameSize ? UINT64_MAX : MFI.getStackSize();
 
-  auto CurrentIt = FnInfos.find(AP.CurrentFnSym);
-  if (CurrentIt != FnInfos.end())
+  auto *CurrentIt = FnInfos.find(AP.CurrentFnSym);
+  if (CurrentIt != FnInfos.end()) {
     CurrentIt->second.RecordCount++;
-  else {
+  } else {
     // Collect callee-saved-register spills.
     CSRVec CSRInfo;
     std::vector<CalleeSavedInfo> CSI = MFI.getCalleeSavedInfo();
@@ -697,13 +697,25 @@ void StackMaps::recordPatchPoint(
                       opers.isAnyReg() && opers.hasDef());
 
 #ifndef NDEBUG
+  MI.dump();
   // verify anyregcc
   auto &LiveVars = CSInfos.back().LiveVars;
   if (opers.isAnyReg()) {
     unsigned NArgs = opers.getNumCallArgs();
-    for (unsigned i = 0, e = (opers.hasDef() ? NArgs + 1 : NArgs); i != e; ++i)
-      for (auto &Loc : LiveVars[i])
+    for (unsigned i = 0, e = (opers.hasDef() ? NArgs + 1 : NArgs); i != e; ++i) {
+      errs() << "--- LiveVar " << i << "\n";
+      for (auto &Loc : LiveVars[i]) {
+        errs() << "-Loc\n";
+        errs() << "Type: " << Loc.Type << "\n";
+        if (Loc.Type == Location::Register) {
+          errs() << "Reg: " << Loc.Reg << "\n";
+        } else if (Loc.Type == Location::Indirect) {
+          errs() << "Reg: " << Loc.Reg << "\n";
+          errs() << "Off: " << Loc.Offset << "\n";
+        }
         assert(Loc.Type == Location::Register && "anyreg arg must be in reg.");
+      }
+    }
   }
 #endif
 }

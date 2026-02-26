@@ -16,7 +16,6 @@
 #include "lld/Common/Memory.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/LEB128.h"
-#include "llvm/Support/Parallel.h"
 
 #define DEBUG_TYPE "lld"
 
@@ -233,7 +232,7 @@ void CustomSection::finalizeInputSections() {
     return;
 
   mergedSection->finalizeContents();
-  inputSections = newSections;
+  inputSections = std::move(newSections);
 }
 
 void CustomSection::finalizeContents() {
