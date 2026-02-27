@@ -42,8 +42,37 @@ const int PPArgIdxNumTargetArgs = 3;
 
 // Function flags.
 const uint8_t YkFuncFlagOutline = 1;
-const uint8_t YkFuncFlagIdempotent = 2;
-const uint8_t YkFuncFlagInlineIndirect = 4;
+const uint8_t YkFuncFlagIdempotent = 1 << 1;
+const uint8_t YkFuncFlagInlineIndirect = 1 << 2;
+// A 2-bit field for function memory flags.
+__attribute__((unused)) const uint8_t YkFuncFlagMemoryLo = 1 << 3;
+__attribute__((unused)) const uint8_t YkFuncFlagMemoryHi = 1 << 4;
+
+const uint8_t FuncMemShift = 3;
+
+// The memory access guarantees of a function.
+//
+// Note that for now, yk IR expressed this information at a coarser grain than
+// LLVM does: we do not track the different access modes for arguments,
+// inaccessiblemem, etc.
+//
+// For example, if in the LLVM IR we have a function annotated:
+//   memory(read, argmem: readwrite, inaccessiblemem: none)
+//
+// In the yk IR, we would simply say the function may read or write (the most
+// general of all of the access modes).
+//
+// Refer to the LLVM language reference for more information.
+enum FuncMemory {
+  // Doesn't read any memory.
+  FuncMemoryNone = 0b00,
+  // May read (but not write)  memory.
+  FuncMemoryRead = 0b01,
+  // May write (but not read) memory.
+  FuncMemoryWrite = 0b10,
+  // May read or write memory.
+  FuncMemoryReadWrite = 0b11,
+};
 
 #include <sstream>
 
@@ -1841,6 +1870,17 @@ private:
     if (F.hasFnAttribute(YK_INDIRECT_INLINE_FNATTR)) {
       Flags |= YkFuncFlagInlineIndirect;
     }
+    // memory() annotations.
+    uint8_t MemFlags = FuncMemoryReadWrite;
+    if (F.doesNotAccessMemory()) {
+      MemFlags = FuncMemoryNone;
+    } else if (F.onlyReadsMemory()) {
+      MemFlags = FuncMemoryRead;
+    } else if (F.onlyWritesMemory()) {
+      MemFlags = FuncMemoryWrite;
+    }
+    Flags |= MemFlags << FuncMemShift;
+
     OutStreamer.emitInt8(Flags);
   }
 

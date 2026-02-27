@@ -697,22 +697,12 @@ void StackMaps::recordPatchPoint(
                       opers.isAnyReg() && opers.hasDef());
 
 #ifndef NDEBUG
-  MI.dump();
   // verify anyregcc
   auto &LiveVars = CSInfos.back().LiveVars;
   if (opers.isAnyReg()) {
     unsigned NArgs = opers.getNumCallArgs();
     for (unsigned i = 0, e = (opers.hasDef() ? NArgs + 1 : NArgs); i != e; ++i) {
-      errs() << "--- LiveVar " << i << "\n";
       for (auto &Loc : LiveVars[i]) {
-        errs() << "-Loc\n";
-        errs() << "Type: " << Loc.Type << "\n";
-        if (Loc.Type == Location::Register) {
-          errs() << "Reg: " << Loc.Reg << "\n";
-        } else if (Loc.Type == Location::Indirect) {
-          errs() << "Reg: " << Loc.Reg << "\n";
-          errs() << "Off: " << Loc.Offset << "\n";
-        }
         assert(Loc.Type == Location::Register && "anyreg arg must be in reg.");
       }
     }
