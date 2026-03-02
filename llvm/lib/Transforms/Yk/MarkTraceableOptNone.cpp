@@ -39,6 +39,7 @@ public:
         continue;
       }
 
+      F.removeFnAttr(Attribute::OptimizeForSize);
       F.addFnAttr(Attribute::OptimizeNone);
       F.addFnAttr(Attribute::NoInline);
       Changed = true;
