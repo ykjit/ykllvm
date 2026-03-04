@@ -115,6 +115,7 @@ enum OpCode {
   OpCodeFNeg,
   OpCodeDebugStr,
   OpCodeExtractValue,
+  OpCodeFreeze,
   OpCodeUnimplemented = 255, // YKFIXME: Will eventually be deleted.
 };
 
@@ -1617,6 +1618,19 @@ private:
     InstIdx++;
   }
 
+  void serialiseFreezeInst(FreezeInst *I, FuncLowerCtxt &FLCtxt, unsigned BBIdx,
+                           unsigned &InstIdx) {
+    // opcode:
+    serialiseOpcode(OpCodeFreeze);
+    // type_idx:
+    OutStreamer.emitSizeT(typeIndex(I->getType()));
+    // operand:
+    serialiseOperand(I, FLCtxt, I->getOperand(0));
+
+    FLCtxt.updateVLMap(I, {BBIdx, InstIdx});
+    InstIdx++;
+  }
+
   size_t getPathIndex(string Path) {
     vector<string>::iterator It = std::find(Paths.begin(), Paths.end(), Path);
     if (It != Paths.end()) {
@@ -1700,6 +1714,7 @@ private:
     INST_SERIALISE(I, SelectInst, serialiseSelectInst);
     INST_SERIALISE(I, UnaryOperator, serialiseUnaryOperatorInst);
     INST_SERIALISE(I, ExtractValueInst, serialiseExtractValueInst);
+    INST_SERIALISE(I, FreezeInst, serialiseFreezeInst);
 
     // INST_SERIALISE does an early return upon a match, so if we get here then
     // the instruction wasn't handled.
