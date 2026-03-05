@@ -881,6 +881,7 @@ private:
       // - `willreturn` function returns or has UB.
       if (Attr.isEnumAttribute() &&
           ((Attr.getKindAsEnum() == Attribute::Cold) ||
+           (Attr.getKindAsEnum() == Attribute::OptimizeForSize) ||
            (Attr.getKindAsEnum() == Attribute::NoReturn) ||
            (Attr.getKindAsEnum() == Attribute::NoUnwind) ||
            (Attr.getKindAsEnum() == Attribute::ReturnsTwice) ||
