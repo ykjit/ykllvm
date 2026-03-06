@@ -38,6 +38,8 @@ public:
   // Return the name of the idempotent recorder function for an integer type.
   std::optional<std::string> intRecorderFuncName(IntegerType *ITy) {
     switch (ITy->getBitWidth()) {
+    case 8:
+      return std::string(YK_IDEMPOTENT_RECORDER_PREFIX "i8");
     case 32:
       return std::string(YK_IDEMPOTENT_RECORDER_PREFIX "i32");
     case 64:
