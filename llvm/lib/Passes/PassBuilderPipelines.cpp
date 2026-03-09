@@ -1329,6 +1329,10 @@ PassBuilder::buildModuleSimplificationPipeline(OptimizationLevel Level,
 void PassBuilder::addVectorPasses(OptimizationLevel Level,
                                   FunctionPassManager &FPM,
                                   ThinOrFullLTOPhase LTOPhase) {
+  if (YkNoVectorize) {
+    return;
+  }
+
   const bool IsFullLTO = LTOPhase == ThinOrFullLTOPhase::FullLTOPostLink;
 
   FPM.addPass(LoopVectorizePass(
