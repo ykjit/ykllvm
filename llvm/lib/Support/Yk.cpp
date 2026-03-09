@@ -160,6 +160,19 @@ struct CreateYkModuleCloneParser {
 } // namespace
 static ManagedStatic<cl::opt<bool, true>, CreateYkModuleCloneParser> YkModuleCloneParser;
 
+bool YkNoVectorize;
+namespace {
+struct CreateYkNoVectorizeParser {
+  static void *call() {
+    return new cl::opt<bool, true>(
+        "yk-no-vectorize",
+        cl::desc("Disable vectorization, including during LTO"),
+        cl::NotHidden, cl::location(YkNoVectorize));
+  }
+};
+} // namespace
+static ManagedStatic<cl::opt<bool, true>, CreateYkNoVectorizeParser> YkNoVectorizeParser;
+
 void llvm::initYkOptions() {
   *YkStackMapOffsetFixParser;
   *YkStackMapAdditionalLocsParser;
@@ -172,4 +185,5 @@ void llvm::initYkOptions() {
   *YkPatchIdempotentParser;
   *YkOutlineUntraceableParser;
   *YkModuleCloneParser;
+  *YkNoVectorizeParser;
 }
