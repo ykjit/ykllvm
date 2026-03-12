@@ -2953,6 +2953,16 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
     B.addAttribute(YK_INDIRECT_INLINE_FNATTR);
   }
 
+  // Don't trace naked functions. Such functions are hand-written asm with
+  // stack alignment manually handled. Inserting yk instrumentation can
+  // misalign their stacks.
+  //
+  // FIXME: ideally this would be in an early LLVM pass so as to be frontend
+  // agnostic.
+  if (D->hasAttr<NakedAttr>()) {
+    B.addAttribute(YK_OUTLINE_FNATTR);
+  }
+
   // Mark all functions containing loops with `yk_outline` unless the function
   // was annotated `yk_unroll_safe`.
   //
