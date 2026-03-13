@@ -8,6 +8,7 @@
 //===-------------------------------------------------------------------===//
 
 #include "llvm/YkIR/YkIRWriter.h"
+#include "../IR/ConstantsContext.h"
 #include "llvm/Analysis/ConstantFolding.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/Constant.h"
@@ -214,7 +215,13 @@ enum BinOp {
 // A constant kind
 enum ConstKind {
   ConstKindVal,
+  ConstKindConstExpr,
+  ConstKindGlobalVar,
   ConstKindUnimplemented,
+};
+
+enum ConstExprKind {
+  ConstExprKindGEP,
 };
 
 template <class T> string toString(T *X) {
@@ -394,6 +401,12 @@ private:
   // The last processed `LineInfo`. Used for de-duplication.
   optional<LineInfo> LastLineInfo;
 
+  // Set to true at the point that no more constants may be introduced.
+  bool ConstantsFinalised = false;
+
+  // Set to true at the point that no more globals may be introduced.
+  bool GlobalsFinalised = false;
+
   // Return the index of the LLVM type `Ty`, inserting a new entry if
   // necessary.
   size_t typeIndex(llvm::Type *Ty) {
@@ -438,6 +451,27 @@ private:
     if (Found != Constants.end()) {
       return std::distance(Constants.begin(), Found);
     }
+    if (ConstantsFinalised) {
+      llvm::report_fatal_error(
+          "attempt to create new constant when constants are finalised");
+    }
+
+    // Ensure nested constants are issued constant indices *before* we start
+    // serialising the constants (at which time it would be too late).
+    //
+    // Serialise the nested constants first so that the constant table is in
+    // topological order.
+    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
+      if (GEPOperator *GO = dyn_cast<GEPOperator>(CE)) {
+        constantIndex(cast<Constant>(GO->getPointerOperand()));
+      } else if (CastConstantExpr *CCE = dyn_cast<CastConstantExpr>(CE)) {
+        constantIndex(cast<Constant>(CCE->getOperand(0)));
+      } else {
+        llvm::report_fatal_error(
+            StringRef("unhandled ConstantExpr: " + toString(C)));
+      }
+    }
+
     size_t Idx = Constants.size();
     Constants.push_back(C);
     return Idx;
@@ -450,6 +484,10 @@ private:
         std::find(Globals.begin(), Globals.end(), G);
     if (Found != Globals.end()) {
       return std::distance(Globals.begin(), Found);
+    }
+    if (GlobalsFinalised) {
+      llvm::report_fatal_error(
+          "attempt to create new global when globals are finalised");
     }
     size_t Idx = Globals.size();
     Globals.push_back(G);
@@ -1083,23 +1121,6 @@ private:
     if (I->getPointerAddressSpace() != 0) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
       return;
-    }
-
-    // Rewrite getelementptr operands into GetElementPtrInst's.
-    if (llvm::GEPOperator *GEP =
-            llvm::dyn_cast<llvm::GEPOperator>(I->getPointerOperand())) {
-      if (!isa<GetElementPtrInst>(GEP)) {
-        std::vector<Value *> Indices;
-        for (Value *V : GEP->indices()) {
-          Indices.push_back(V);
-        }
-        GetElementPtrInst *G = nullptr;
-        G = GetElementPtrInst::Create(GEP->getSourceElementType(),
-                                      GEP->getPointerOperand(), Indices);
-        G->insertBefore(I->getIterator());
-        I->setOperand(0, G);
-        serialiseGetElementPtrInst(G, FLCtxt, BBIdx, InstIdx);
-      }
     }
 
     // opcode:
@@ -2116,6 +2137,34 @@ private:
     OutStreamer.emitSizeT(0);
   }
 
+  void serialiseConstantExpr(ConstantExpr *CE) {
+    if (GEPOperator *GO = dyn_cast<GEPOperator>(CE)) {
+      unsigned IdxBitWidth =
+          DL.getIndexSizeInBits(GO->getPointerAddressSpace());
+      assert(sizeof(void *) * 8 == IdxBitWidth);
+      static_assert(sizeof(size_t) <= sizeof(uint64_t));
+      APInt ConstOff(IdxBitWidth, 0);
+      SmallMapVector<Value *, APInt, 4> DynOffs;
+      bool CollectRes = GO->collectOffset(DL, IdxBitWidth, DynOffs, ConstOff);
+      assert(ConstOff.sle(APInt(sizeof(size_t) * 8, SSIZE_MAX)));
+      assert(CollectRes);
+
+      // `Const` discriminator:
+      OutStreamer.emitInt8(ConstKindConstExpr);
+      // tyidx:
+      OutStreamer.emitSizeT(typeIndex(GO->getType()));
+      // `ConstExpr` discriminator:
+      OutStreamer.emitInt8(ConstExprKindGEP);
+      // constant ptr:
+      OutStreamer.emitSizeT(
+          constantIndex(cast<Constant>(GO->getPointerOperand())));
+      // offset:
+      OutStreamer.emitSizeT(ConstOff.getZExtValue());
+    } else {
+      serialiseUnimplementedConstant(CE);
+    }
+  }
+
   void serialiseConstantFP(ConstantFP *CFP) {
     // For simplicity, for now we store all constant float values as doubles.
     if ((CFP->getType()->isFloatTy()) || (CFP->getType()->isDoubleTy())) {
@@ -2130,13 +2179,25 @@ private:
     }
   }
 
+  /// Serialise a global being used as a constant.
+  void serialiseGlobalConstant(GlobalVariable *GV) {
+    // kind:
+    OutStreamer.emitInt8(ConstKindGlobalVar);
+    // globalidx:
+    OutStreamer.emitSizeT(globalIndex(GV));
+  }
+
   void serialiseConstant(Constant *C) {
     if (ConstantInt *CI = dyn_cast<ConstantInt>(C)) {
       serialiseConstantInt(CI);
     } else if (ConstantPointerNull *NP = dyn_cast<ConstantPointerNull>(C)) {
       serialiseConstantNullPtr(NP);
+    } else if (ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
+      serialiseConstantExpr(CE);
     } else if (ConstantFP *CFP = dyn_cast<ConstantFP>(C)) {
       serialiseConstantFP(CFP);
+    } else if (GlobalVariable *GV = dyn_cast<GlobalVariable>(C)) {
+      serialiseGlobalConstant(GV);
     } else {
       serialiseUnimplementedConstant(C);
     }
@@ -2145,6 +2206,7 @@ private:
   void serialiseGlobal(GlobalVariable *G) {
     assert(G->getType()->isPointerTy());
     OutStreamer.emitInt8(G->isThreadLocal());
+    OutStreamer.emitSizeT(typeIndex(G->getType()));
     serialiseString(G->getName());
   }
 
@@ -2273,6 +2335,9 @@ public:
       serialiseFunc(F);
     }
 
+    // No new constants may be introduced now, otherwise we have iterator
+    // invalidation.
+    ConstantsFinalised = true;
     // num_constants:
     OutStreamer.emitSizeT(Constants.size());
     // constants:
@@ -2280,6 +2345,9 @@ public:
       serialiseConstant(C);
     }
 
+    // No new globals may be introduced now, otherwise we have iterator
+    // invalidation.
+    GlobalsFinalised = true;
     // num_globals:
     OutStreamer.emitSizeT(Globals.size());
     // globals:
