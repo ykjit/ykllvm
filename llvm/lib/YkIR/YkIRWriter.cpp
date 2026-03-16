@@ -2341,6 +2341,11 @@ public:
     OutStreamer.emitInt32(Magic);
     OutStreamer.emitInt32(Version);
 
+    // ptr_bitsize:
+    unsigned PtrBitWidth = DL.getPointerSizeInBits(0);
+    assert(PtrBitWidth <= 0xff);
+    OutStreamer.emitInt8(PtrBitWidth);
+
     // ptr_off_bitsize:
     unsigned IdxBitWidth = DL.getIndexSizeInBits(0);
     assert(IdxBitWidth <= 0xff);
