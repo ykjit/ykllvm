@@ -1462,28 +1462,6 @@ private:
 
   void serialiseCastKind(enum CastKind Cast) { OutStreamer.emitInt8(Cast); }
 
-  /// Serialise a cast-like instruction.
-  void serialiseSExtInst(SExtInst *I, FuncLowerCtxt &FLCtxt, unsigned BBIdx,
-                         unsigned &InstIdx) {
-    // We don't support vectors.
-    if (I->getOperand(0)->getType()->isVectorTy()) {
-      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
-      return;
-    }
-
-    // opcode:
-    serialiseOpcode(OpCodeCast);
-    // cast_kind:
-    serialiseCastKind(CastKindSignExt);
-    // val:
-    serialiseOperand(I, FLCtxt, I->getOperand(0));
-    // dest_type_idx:
-    OutStreamer.emitSizeT(typeIndex(I->getDestTy()));
-
-    FLCtxt.updateVLMap(I, {BBIdx, InstIdx});
-    InstIdx++;
-  }
-
   std::optional<CastKind> getCastKind(Instruction::CastOps Cast) {
     switch (Cast) {
     case Instruction::ZExt:
