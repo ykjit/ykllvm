@@ -1,4 +1,4 @@
-//===- YkIR/YkIRWRiter.cpp -- Yk JIT IR Serialiaser--------------------===//
+//===- YkIR/YkIRWRiter.cpp -- Yk JIT IR Serialiser ---------------------===//
 //
 // Converts an LLVM module into Yk's on-disk AOT IR.
 //
