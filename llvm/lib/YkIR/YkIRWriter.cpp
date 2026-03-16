@@ -876,7 +876,6 @@ private:
         return;
       }
     }
-    // We don't support ANY return value attributes yet.
     for (auto &Attr : Attrs.getRetAttrs()) {
       // The function returns or has UB. I *think* this can be safely ignored.
       if (Attr.getKindAsEnum() == Attribute::WillReturn) {
@@ -897,6 +896,9 @@ private:
         continue;
       }
       if (Attr.getKindAsEnum() == Attribute::Range) {
+        continue;
+      }
+      if (Attr.getKindAsEnum() == Attribute::NoUndef) {
         continue;
       }
       serialiseUnimplementedInstruction(
