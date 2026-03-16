@@ -222,6 +222,7 @@ enum ConstKind {
 
 enum ConstExprKind {
   ConstExprKindGEP,
+  ConstExprKindCast,
 };
 
 template <class T> string toString(T *X) {
@@ -2160,6 +2161,24 @@ private:
           constantIndex(cast<Constant>(GO->getPointerOperand())));
       // offset:
       OutStreamer.emitSizeT(ConstOff.getZExtValue());
+    } else if (CE->isCast()) {
+      // Reject what we don't support.
+      std::optional<CastKind> CK =
+          getCastKind(Instruction::CastOps(CE->getOpcode()));
+      if (!CK.has_value() || (CE->getOperand(0)->getType()->isVectorTy())) {
+        serialiseUnimplementedConstant(CE);
+        return;
+      }
+      // `Const` discriminator:
+      OutStreamer.emitInt8(ConstKindConstExpr);
+      // tyidx:
+      OutStreamer.emitSizeT(typeIndex(CE->getType()));
+      // `ConstExpr` discriminator:
+      OutStreamer.emitInt8(ConstExprKindCast);
+      // Cast kind.
+      serialiseCastKind(CK.value());
+      // constant arg
+      OutStreamer.emitSizeT(constantIndex(cast<Constant>(CE->getOperand(0))));
     } else {
       serialiseUnimplementedConstant(CE);
     }
