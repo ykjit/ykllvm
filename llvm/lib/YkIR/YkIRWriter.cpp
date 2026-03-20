@@ -217,6 +217,7 @@ enum ConstKind {
   ConstKindVal,
   ConstKindConstExpr,
   ConstKindGlobalVar,
+  ConstKindPoison,
   ConstKindUnimplemented,
 };
 
@@ -2070,6 +2071,13 @@ private:
     }
   }
 
+  void serialisePoisonValue(PoisonValue *PV) {
+    // `Const` discriminator:
+    OutStreamer.emitInt8(ConstKindPoison);
+    // ty_idx:
+    OutStreamer.emitSizeT(typeIndex(PV->getType()));
+  }
+
   void serialiseConstantInt(ConstantInt *CI) {
     // `Const` discriminator:
     OutStreamer.emitInt8(ConstKindVal);
@@ -2187,7 +2195,9 @@ private:
   }
 
   void serialiseConstant(Constant *C) {
-    if (ConstantInt *CI = dyn_cast<ConstantInt>(C)) {
+    if (PoisonValue *PV = dyn_cast<PoisonValue>(C)) {
+      serialisePoisonValue(PV);
+    } else if (ConstantInt *CI = dyn_cast<ConstantInt>(C)) {
       serialiseConstantInt(CI);
     } else if (ConstantPointerNull *NP = dyn_cast<ConstantPointerNull>(C)) {
       serialiseConstantNullPtr(NP);
