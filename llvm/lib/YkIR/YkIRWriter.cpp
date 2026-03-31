@@ -930,6 +930,12 @@ private:
            (Attr.getKindAsEnum() == Attribute::WillReturn))) {
         continue;
       }
+      // Ignore hints to the inliner.
+      if (Attr.isStringAttribute() &&
+          (Attr.getKindAsString() == "function-inline-cost-multiplier")) {
+        continue;
+      }
+
       // `memory` are memory effect hints, which can be ignored.
       if (Attr.hasAttribute(Attribute::Memory)) {
         continue;
