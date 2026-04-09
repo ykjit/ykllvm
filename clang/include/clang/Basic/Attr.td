@@ -5291,10 +5291,10 @@ def YkIdempotent : InheritableAttr {
   let SimpleHandler = 1;
 }
 
-def YkUnrollSafe : InheritableAttr {
-  let Spellings = [GCC<"yk_unroll_safe">, Declspec<"yk_unroll_safe">];
+def YkUnroll : InheritableAttr {
+  let Spellings = [GCC<"yk_unroll">, Declspec<"yk_unroll">];
   let Subjects = SubjectList<[Function]>;
-  let Documentation = [YkUnrollSafeDocs];
+  let Documentation = [YkUnrollDocs];
   let SimpleHandler = 1;
 }
 

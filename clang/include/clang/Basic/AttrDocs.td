@@ -9068,10 +9068,10 @@ def YkIdempotentDocs : Documentation {
   let Content = [{tells the yk trace optimiser that this function is idempotent}];
 }
 
-def YkUnrollSafeDocs : Documentation {
+def YkUnrollDocs : Documentation {
   let Category = DocCatFunction;
   let Content = [{
-  The ``yk_unroll_safe`` attribute tells the Yk JIT that during tracing, calls
+  The ``yk_unroll`` attribute tells the Yk JIT that during tracing, calls
   to the annotated function can be inlined, even if it contains loops. By
   default only calls to functions that contain no loops are inlined.
   }];

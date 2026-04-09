@@ -2964,7 +2964,7 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
   }
 
   // Mark all functions containing loops with `yk_outline` unless the function
-  // was annotated `yk_unroll_safe`.
+  // was annotated `yk_unroll`.
   //
   // This needs to be gated so that we don't impact the normal clang and LLVM
   // tests.
@@ -2974,13 +2974,13 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
   // function anyway, so there's no need to conservatively add `yk_outline`.
   //
   // FIXME: This doesn't really belong in clang. It should be put into an
-  // early-running LLVM pass (and we would have to pass down the yk_unroll_safe
+  // early-running LLVM pass (and we would have to pass down the yk_unroll
   // atrributes to the IR-level). Then this logic would be frontend agnostic.
   if (CodeGenOpts.YkNoinlineFuncsWithLoops && !F->empty()) {
     llvm::DominatorTree DT(*F);
     llvm::LoopInfo LI(DT);
     if (!LI.empty()) {
-      if (!D->hasAttr<YkUnrollSafeAttr>())
+      if (!D->hasAttr<YkUnrollAttr>())
         B.addAttribute(YK_OUTLINE_FNATTR);
 
       // Note that we still mark the loopy function `F` with `noinline` (to
@@ -2989,7 +2989,7 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
       //
       // * if `F` is to be inlined into a trace and we don't block AOT inlining
       // then `F` may get AOT inlined into a parent function which contains
-      // loops but isn't marked `yk_unroll_safe`. The trace would have to call
+      // loops but isn't marked `yk_unroll`. The trace would have to call
       // the parent, meaning that `F` would not be inlined into the trace!
       //
       // * if `F` is to be outlined in a trace and we don't block AOT inlining,
