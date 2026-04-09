@@ -242,6 +242,6 @@
 // CHECK-NEXT: YkIdempotent (SubjectMatchRule_function)
 // CHECK-NEXT: YkIndirectInline (SubjectMatchRule_function)
 // CHECK-NEXT: YkOutline (SubjectMatchRule_function)
-// CHECK-NEXT: YkUnrollSafe (SubjectMatchRule_function)
+// CHECK-NEXT: YkUnroll (SubjectMatchRule_function)
 // CHECK-NEXT: ZeroCallUsedRegs (SubjectMatchRule_function)
 // CHECK-NEXT: End of supported attributes.
