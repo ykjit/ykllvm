@@ -1002,6 +1002,13 @@ private:
     if (I->getIntrinsicID() == Intrinsic::experimental_stackmap) {
       return;
     }
+    // @llvm.experimental.noalias.scope.decl is an optimisation hint emitted for
+    // functions. It carries a MetadataAsValue operand that the serialiser
+    // cannot handle. The intrinsic has no effect on program semantics, so skip
+    // it for now.
+    if (I->getIntrinsicID() == Intrinsic::experimental_noalias_scope_decl) {
+      return;
+    }
 
     // Calls to functions that promote runtime values are given their own
     // bytecodes so that they can more be easily identified.
