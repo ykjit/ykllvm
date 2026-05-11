@@ -56,6 +56,14 @@ bool ModuleClonePass::shouldClone(Function &F) {
   if (F.isDeclaration()) {
     return false;
   }
+  // Functions with available_externally linkage have bodies present only as
+  // optimisation hints; the linker treats them as external and will never emit
+  // a definition for them. Cloning such a function would produce an
+  // __yk_opt__ copy whose definition is also silently dropped, leaving call
+  // sites that reference an undefined symbol.
+  if (F.hasAvailableExternallyLinkage()) {
+    return false;
+  }
   // If the address of a function is taken, then cloning it would break
   // function pointer identity, which the program may rely on.
   if (F.hasAddressTaken()) {
