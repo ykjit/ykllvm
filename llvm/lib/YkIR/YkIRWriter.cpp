@@ -1471,6 +1471,7 @@ private:
     // elem:
     serialiseOperand(I, FLCtxt, I->getInsertedValueOperand());
 
+    FLCtxt.updateVLMap(I, {BBIdx, InstIdx});
     InstIdx++;
   }
 
