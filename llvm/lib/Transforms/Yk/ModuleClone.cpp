@@ -11,16 +11,22 @@
 //
 // All optimised clones are marked `yk_outline`.
 //
-// Sometimes we are unable to clone a function. For example when a function has
-// its address taken. Cloning such a function would break "function pointer
-// identity", which the program may be relying on.
+// For functions whose address is taken we still clone them, but we can't
+// simply remove the original (that would break function pointer identity).
+// Instead we prepend a check to the original function: if we're not currently
+// tracing, tail-call the optimised clone and return; otherwise fall through to
+// the original (unoptimised) body so the tracer can observe it.
+//
+// Functions that contain the control point are never cloned.
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Yk/ModuleClone.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/DebugInfoMetadata.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
@@ -29,6 +35,7 @@
 #include "llvm/Linker/Linker.h"
 #include "llvm/Pass.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "llvm/Transforms/Yk/BasicBlockTracer.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
 #include "llvm/YkIR/YkIRWriter.h"
 
@@ -49,32 +56,26 @@ std::vector<Function *> ModuleClonePass::getFunctionsWithIR(Module &M) {
   return Funcs;
 }
 
-// Decide if we should clone a function.
-bool ModuleClonePass::shouldClone(Function &F) {
+// Returns true if the function should be cloned and have a tracing-state
+// dispatch block prepended to its entry.
+// Example:
+//   f(args):
+//     if __yk_thread_tracing_state == 0:
+//       return __yk_opt_f(args)
+//     <original body>
+bool ModuleClonePass::isCloneableWithTracingCheckOptCall(Function &F) {
   assert(!F.isDeclaration());
+  return !F.hasAvailableExternallyLinkage() && F.hasAddressTaken() &&
+         !containsControlPoint(F) && !F.isVarArg() &&
+         !F.hasFnAttribute(YK_OUTLINE_FNATTR);
+}
 
-  if (F.isDeclaration()) {
-    return false;
-  }
-  // Functions with available_externally linkage have bodies present only as
-  // optimisation hints; the linker treats them as external and will never emit
-  // a definition for them. Cloning such a function would produce an
-  // __yk_opt__ copy whose definition is also silently dropped, leaving call
-  // sites that reference an undefined symbol.
-  if (F.hasAvailableExternallyLinkage()) {
-    return false;
-  }
-  // If the address of a function is taken, then cloning it would break
-  // function pointer identity, which the program may rely on.
-  if (F.hasAddressTaken()) {
-    return false;
-  }
-  // For now we don't clone functions that contain a call to the control
-  // point.
-  if (containsControlPoint(F)) {
-    return false;
-  }
-  return true;
+// Returns true if the function should be cloned. Calls from within other opt
+// clones are redirected to the clone.
+bool ModuleClonePass::isCloneableOpt(Function &F) {
+  assert(!F.isDeclaration());
+  return !F.hasAvailableExternallyLinkage() && !F.hasAddressTaken() &&
+         !containsControlPoint(F);
 }
 
 /// Clones all eligible functions within the given module.
@@ -82,7 +83,7 @@ bool ModuleClonePass::shouldClone(Function &F) {
 /// @param M The LLVM module containing the functions to be cloned.
 ///
 /// @return A map from the original function to the cloned function.
-/// Functions which were no cloned will have a nullptr value in the map.
+/// Functions which were not cloned will have a nullptr value in the map.
 std::optional<std::map<Function *, Function *>>
 ModuleClonePass::cloneFunctionsInModule(Module &M) {
   LLVMContext &Context = M.getContext();
@@ -91,37 +92,27 @@ ModuleClonePass::cloneFunctionsInModule(Module &M) {
 
   std::map<Function *, Function *> CloneMap;
   for (Function *F : Funcs) {
-    auto OrigName = F->getName().str();
-
-    // Maybe clone the function.
     Function *ClonedOptFunc = nullptr;
-    if (shouldClone(*F)) {
+    if (isCloneableOpt(*F) || isCloneableWithTracingCheckOptCall(*F)) {
+      auto OrigName = F->getName().str();
       ValueToValueMapTy VMap;
       ClonedOptFunc = CloneFunction(F, VMap);
       if (ClonedOptFunc == nullptr) {
         Context.emitError("Failed to clone function: " + F->getName());
         return std::nullopt;
       }
-      // Copy arguments
       auto DestArgIt = ClonedOptFunc->arg_begin();
-      for (const Argument &OrigArg : F->args()) {
-        DestArgIt->setName(OrigArg.getName());
-        VMap[&OrigArg] = &*DestArgIt++;
-      }
-      // Promotions and calls to yk_debug_str are not required for optimised
-      // clones and would only slow us down.
+      for (const Argument &OrigArg : F->args())
+        (DestArgIt++)->setName(OrigArg.getName());
       removePromotionsAndDebugStrings(ClonedOptFunc);
-      // The cloned function will be the optimised one.
-      Twine OptName = Twine(YK_SWT_OPT_PREFIX) + OrigName;
-      ClonedOptFunc->setName(OptName);
+      ClonedOptFunc->setName(Twine(YK_SWT_OPT_PREFIX) + OrigName);
       ClonedOptFunc->setMetadata(YK_SWT_OPT_MD, OptMD);
-
-      // Let subsequent inlining calls operate on optimised clones (but respect
-      // optnone)
-      if (!ClonedOptFunc->hasFnAttribute(Attribute::OptimizeNone)) {
+      if (!ClonedOptFunc->hasFnAttribute(Attribute::OptimizeNone))
         ClonedOptFunc->removeFnAttr(Attribute::NoInline);
-      }
       ClonedOptFunc->addFnAttr(YK_OUTLINE_FNATTR);
+    }
+    if (isCloneableWithTracingCheckOptCall(*F)) {
+      prependTracingCheck(F, ClonedOptFunc, M);
     }
     // Update the map. If we didn't clone, then we insert a nullptr value.
     CloneMap[F] = ClonedOptFunc;
@@ -164,6 +155,78 @@ void ModuleClonePass::removePromotionsAndDebugStrings(Function *F) {
   for (CallInst *D : DebugStrs) {
     D->eraseFromParent();
   }
+}
+
+/// Prepends a tracing check to an address-taken function.
+///
+/// When called via a function pointer the function itself must remain
+/// in place (to preserve pointer identity). We handle this by inserting a
+/// new entry block that loads __yk_thread_tracing_state: if not tracing,
+/// tail-call the optimised clone and return immediately; otherwise fall
+/// through to the original body so the tracer can observe it.
+///
+/// Before:
+/// ```
+/// int foo(int x) {
+///   <original body>
+/// }
+/// ```
+///
+/// After:
+/// ```
+/// int foo(int x) {
+///   if (__yk_thread_tracing_state == 0)
+///     return __yk_opt_foo(x);   // not tracing: take the opt path
+///   <original body>
+/// }
+///
+/// int __yk_opt_foo(int x) { ... }          ; yk_outline, optimised clone
+/// ```
+void ModuleClonePass::prependTracingCheck(Function *F, Function *OptClone,
+                                          Module &M) {
+  LLVMContext &Context = M.getContext();
+  Type *I8Ty = Type::getInt8Ty(Context);
+
+  // Split at the very first instruction. OrigEntry becomes an empty stub;
+  // OrigBody gets all the original instructions.
+  BasicBlock &OrigEntry = F->getEntryBlock();
+  BasicBlock *OrigBody =
+      OrigEntry.splitBasicBlock(&OrigEntry.front(), "orig_body");
+
+  // Remove the unconditional branch that splitBasicBlock inserted.
+  OrigEntry.getTerminator()->eraseFromParent();
+
+  // Build the dispatch logic in the (now empty) original entry block.
+  IRBuilder<> Builder(&OrigEntry);
+  GlobalVariable *TracingStateTL = getOrCreateThreadTracingState(M);
+  LoadInst *State = Builder.CreateLoad(I8Ty, TracingStateTL, "tracing_state");
+  Value *NotTracing =
+      Builder.CreateICmpEQ(State, ConstantInt::get(I8Ty, 0), "not_tracing");
+
+  // Not-tracing block: tail-call the opt clone and return.
+  BasicBlock *NotTracingBB =
+      BasicBlock::Create(Context, "not_tracing", F, OrigBody);
+  Builder.CreateCondBr(NotTracing, NotTracingBB, OrigBody);
+
+  IRBuilder<> NTBuilder(NotTracingBB);
+  // All calls in a function with debug info must carry a !dbg location.
+  // Prefer the first instruction's location; fall back to a synthetic location
+  // anchored at the function's subprogram (line 0 = compiler-generated).
+  if (DebugLoc DL = OrigBody->front().getDebugLoc()) {
+    NTBuilder.SetCurrentDebugLocation(DL);
+  } else if (DISubprogram *SP = F->getSubprogram()) {
+    NTBuilder.SetCurrentDebugLocation(DILocation::get(Context, 0, 0, SP));
+  }
+  std::vector<Value *> Args;
+  for (Argument &Arg : F->args())
+    Args.push_back(&Arg);
+  CallInst *OptCall =
+      NTBuilder.CreateCall(OptClone->getFunctionType(), OptClone, Args);
+  OptCall->setTailCall(true);
+  if (F->getReturnType()->isVoidTy())
+    NTBuilder.CreateRetVoid();
+  else
+    NTBuilder.CreateRet(OptCall);
 }
 
 /// Updates direct calls in optimised clones so that they call optimised
