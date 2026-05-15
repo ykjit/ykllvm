@@ -20,12 +20,14 @@ public:
   PreservedAnalyses run(Module &, ModuleAnalysisManager &);
 
   std::vector<Function *> getFunctionsWithIR(Module &);
-  bool shouldClone(Function &);
+  bool isCloneableOpt(Function &);
+  bool isCloneableWithTracingCheckOptCall(Function &);
   std::optional<std::map<Function *, Function *>>
   cloneFunctionsInModule(Module &);
   void removePromotion(CallBase *);
   void removePromotionsAndDebugStrings(Function *);
   void updateCalls(std::map<Function *, Function *> &, Module &);
+  void prependTracingCheck(Function *, Function *, Module &);
 };
 
 } // namespace llvm
