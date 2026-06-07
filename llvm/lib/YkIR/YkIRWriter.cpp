@@ -902,6 +902,9 @@ private:
       if (Attr.getKindAsEnum() == Attribute::NoUndef) {
         continue;
       }
+      if (Attr.getKindAsEnum() == Attribute::Dereferenceable) {
+        continue;
+      }
       serialiseUnimplementedInstruction(
           I, FLCtxt, BBIdx, InstIdx,
           optional(Attr.getAsString() + " ret attr"));
