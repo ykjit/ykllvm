@@ -849,6 +849,7 @@ private:
              (Attr.getKindAsEnum() == Attribute::NoUndef) ||
              (Attr.getKindAsEnum() == Attribute::NoUnwind) ||
              (Attr.getKindAsEnum() == Attribute::Dereferenceable) ||
+             (Attr.getKindAsEnum() == Attribute::Range) ||
              (Attr.getKindAsEnum() == Attribute::ReadOnly))) {
           continue;
         }
