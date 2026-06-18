@@ -91,12 +91,6 @@ public:
                 continue;
               }
             }
-            // OPT: Geting the live vars from before `I` might include
-            // variables that die immediately after the call. We should try
-            // using the live variables *after* the call, but making sure not to
-            // include the value computed by `I` itself (since that doesn't
-            // exist at the time of the call).
-            SMCalls.push_back({&I, LA.getLiveVarsBefore(&I)});
             if (CF && CF->getName().starts_with("__yk_promote")) {
               // If it's a call to yk_promote* then the return value of the
               // promotion needs to be tracked too. This is because the trace
@@ -104,7 +98,9 @@ public:
               // replace them with a guard that deopts to immediately after the
               // call (at which point the return value is live and needs to be
               // materialised for correctness).
-              SMCalls.back().second.push_back(&CI);
+              SMCalls.push_back({&I, LA.getLiveVarsBefore(I.getNextNode())});
+            } else {
+              SMCalls.push_back({&I, LA.getLiveVarsBefore(&I)});
             }
           } else if ((isa<BranchInst>(I) &&
                       cast<BranchInst>(I).isConditional()) ||
