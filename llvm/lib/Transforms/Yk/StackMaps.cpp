@@ -50,7 +50,11 @@ public:
       return false;
     }
 
-    std::vector<std::pair<Instruction *, std::vector<Value *>>> SMCalls;
+    struct SM {
+      Instruction *inst;
+      std::vector<Value *> live_vars;
+    };
+    std::vector<SM> SMCalls;
     for (Function &F : M) {
       if (F.empty()) // skip declarations.
         continue;
@@ -116,21 +120,18 @@ public:
 
     uint64_t Count = StackmapIDStart;
     Value *Shadow = ConstantInt::get(Type::getInt32Ty(Context), 0);
-    for (std::pair<Instruction *, std::vector<Value *>> P : SMCalls) {
-      Instruction *I = cast<Instruction>(P.first);
-      const std::vector<Value *> L = P.second;
-
-      IRBuilder<> Bldr(I);
+    for (SM P : SMCalls) {
+      IRBuilder<> Bldr(P.inst);
       Value *SMID = ConstantInt::get(Type::getInt64Ty(Context), Count);
       std::vector<Value *> Args = {SMID, Shadow};
-      for (Value *A : L)
+      for (Value *A : P.live_vars)
         Args.push_back(A);
 
-      if (isa<CallInst>(I)) {
+      if (isa<CallInst>(P.inst)) {
         // Insert the stackmap call after (not before) the call instruction, so
         // the offset of the stackmap entry will record the instruction after
         // the call, which is where we want to continue after deoptimisation.
-        Bldr.SetInsertPoint(I->getNextNode());
+        Bldr.SetInsertPoint(P.inst->getNextNode());
       }
       Bldr.CreateCall(SMFunc->getFunctionType(), SMFunc,
                       ArrayRef<Value *>(Args));
