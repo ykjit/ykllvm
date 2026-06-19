@@ -102,9 +102,10 @@ public:
               // replace them with a guard that deopts to immediately after the
               // call (at which point the return value is live and needs to be
               // materialised for correctness).
-              SMCalls.push_back({&I, LA.getLiveVarsBefore(I.getNextNode())});
+              SMCalls.push_back(
+                  {I.getNextNode(), LA.getLiveVarsBefore(I.getNextNode())});
             } else {
-              SMCalls.push_back({&I, LA.getLiveVarsBefore(&I)});
+              SMCalls.push_back({I.getNextNode(), LA.getLiveVarsBefore(&I)});
             }
           } else if ((isa<BranchInst>(I) &&
                       cast<BranchInst>(I).isConditional()) ||
@@ -127,12 +128,6 @@ public:
       for (Value *A : P.live_vars)
         Args.push_back(A);
 
-      if (isa<CallInst>(P.inst)) {
-        // Insert the stackmap call after (not before) the call instruction, so
-        // the offset of the stackmap entry will record the instruction after
-        // the call, which is where we want to continue after deoptimisation.
-        Bldr.SetInsertPoint(P.inst->getNextNode());
-      }
       Bldr.CreateCall(SMFunc->getFunctionType(), SMFunc,
                       ArrayRef<Value *>(Args));
       Count++;
