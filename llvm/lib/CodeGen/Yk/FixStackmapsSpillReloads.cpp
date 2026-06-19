@@ -208,7 +208,6 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
   for (MachineBasicBlock &MBB : MF) {
     bool Collect = false;
     std::set<MachineInstr *> Erased;
-    std::set<MachineInstr *> NewInstrs;
     MachineInstr *LastCall = nullptr;
     std::map<Register, MachineInstr *> Spills;
     for (MachineInstr &MI : MBB) {
@@ -370,7 +369,6 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
         MI.getParent()->insertAfter(LastCall, NewMI);
         // Remember the old stackmap instruction for deletion later.
         Erased.insert(&MI);
-        NewInstrs.insert(NewMI);
         LastCall = nullptr;
         Changed = true;
       }
