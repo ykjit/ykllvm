@@ -2,7 +2,7 @@
 
 ; CHECK-LABEL: name:            main
 ; CHECK-LABEL: bb.0 (%ir-block.1):
-; CHECK-LABEL: CALL64pcrel32 target-flags(x86-plt) @foo2,
+; CHECK-LABEL: CALL64pcrel32 @foo2,
 ; CHECK-NEXT: STACKMAP 1, 0, renamable $ebx, 3, renamable $r14d, 3, 1, 4, $rbp, -48, 3, renamable $r12d, 3, 1, 4, $rbp, -52, 3, renamable $r15d, 3, renamable $r13d, 3, implicit-def dead early-clobber $r11
 
 @.str = private unnamed_addr constant [13 x i8] c"%d %d %d %d\0A\00", align 1
@@ -75,7 +75,10 @@ define dso_local i32 @main(i32 noundef %0) #0 {
   ret i32 0
 }
 
-declare void @foo2(...)
+define dso_local i32 @foo2(...) #0 {
+  ret i32 0
+}
+
 declare void @llvm.experimental.stackmap(i64, i32, ...)
 
 attributes #0 = { noinline nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }

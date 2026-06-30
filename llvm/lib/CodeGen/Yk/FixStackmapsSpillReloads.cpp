@@ -158,6 +158,8 @@
 #include "llvm/CodeGen/StackMaps.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/IR/DebugLoc.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/GlobalAlias.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Transforms/Yk/BasicBlockTracer.h"
@@ -212,18 +214,24 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
     std::map<Register, MachineInstr *> Spills;
     for (MachineInstr &MI : MBB) {
       if (MI.isCall() && !MI.isInlineAsm()) {
-        // YKFIXME: Do we need to check for intrinsics here or have they been
-        // removed during lowering?
         if (MI.getOpcode() != TargetOpcode::STACKMAP &&
             MI.getOpcode() != TargetOpcode::PATCHPOINT) {
           MachineOperand Op = MI.getOperand(0);
-          if (Op.isGlobal() &&
-              (Op.getGlobal()->getName() == YK_TRACE_FUNCTION)) {
-            // Op.getGlobal()->getGlobalIdentifier() == YK_TRACE_FUNCTION) {
-            // `YK_TRACE_FUNCTION` calls don't require stackmaps so we don't
-            // need to adjust anything here. In fact, doing so will skew any
-            // stackmap that follows.
-            continue;
+          if (Op.isGlobal()) {
+            const GlobalValue *GV = MI.getOperand(0).getGlobal();
+            if (GV->getName() == YK_TRACE_FUNCTION) {
+              // `YK_TRACE_FUNCTION` calls don't require stackmaps.
+              continue;
+            }
+            const Function *F;
+            if (const auto *GA = dyn_cast<GlobalAlias>(GV))
+              F = dyn_cast<Function>(GA->getAliaseeObject());
+            else
+              F = dyn_cast<Function>(GV);
+            if (F->isIntrinsic() || F->isDeclaration() ||
+                F->getName().starts_with("__yk_promote")) {
+              continue;
+            }
           }
           // If we see a normal function call we know it will be followed by a
           // STACKMAP instruction. Set `Collect` to `true` to collect all spill
