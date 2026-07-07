@@ -1,7 +1,6 @@
 #ifndef __YK_LIVENESS_H
 #define __YK_LIVENESS_H
 
-#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Instructions.h"
 
 #include <map>
@@ -22,9 +21,6 @@ class LivenessAnalysis {
 
   /// Find the successor instructions of the specified instruction.
   std::set<Instruction *> getSuccessorInstructions(Instruction *I);
-
-  // A domniator tree used to sort the live variables.
-  DominatorTree DT;
 
   /// Replaces the set `S` with the set `R`, returning if the set changed.
   bool updateValueSet(std::set<Value *> &S, const std::set<Value *> &R);
