@@ -4,23 +4,6 @@
 
 using namespace llvm;
 
-bool YkStackMapOffsetFix;
-namespace {
-struct CreateYkStackMapOffsetFixParser {
-  static void *call() {
-    return new cl::opt<bool, true>(
-        "yk-stackmap-offset-fix",
-        cl::desc(
-            "Apply a fix to stackmaps that corrects the reported instruction "
-            "offset in the presence of calls. (deprecated by "
-            "yk-stackmap-spillreloads-fix)"),
-        cl::NotHidden, cl::location(YkStackMapOffsetFix));
-  }
-};
-} // namespace
-static ManagedStatic<cl::opt<bool, true>, CreateYkStackMapOffsetFixParser>
-    YkStackMapOffsetFixParser;
-
 bool YkStackMapAdditionalLocs;
 namespace {
 struct CreateYkStackMapAdditionalLocsParser {
@@ -174,7 +157,6 @@ struct CreateYkNoVectorizeParser {
 static ManagedStatic<cl::opt<bool, true>, CreateYkNoVectorizeParser> YkNoVectorizeParser;
 
 void llvm::initYkOptions() {
-  *YkStackMapOffsetFixParser;
   *YkStackMapAdditionalLocsParser;
   *YkStackmapsSpillFixParser;
   *YkMarkTraceableOptNoneParser;
