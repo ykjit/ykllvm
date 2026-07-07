@@ -10,7 +10,6 @@
 #include "llvm/Transforms/Yk/LivenessAnalysis.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -69,9 +68,6 @@ LivenessAnalysis::LivenessAnalysis(Function *Func) {
   // Compute defs and uses for each instruction.
   std::map<Instruction *, std::set<Value *>> Defs;
   std::map<Instruction *, std::set<Value *>> Uses;
-
-  // Create a domniator tree so we can later sort the live variables.
-  DT = DominatorTree(*Func);
 
   for (BasicBlock &BB : *Func) {
     for (Instruction &I : BB) {
@@ -199,17 +195,61 @@ LivenessAnalysis::LivenessAnalysis(Function *Func) {
 }
 
 std::vector<Value *> LivenessAnalysis::getLiveVarsBefore(Instruction *I) {
-  std::set<Value *> Res = In[I];
-  // Sort the live variables by order of appearance using a dominator tree. The
-  // order is important for frame construction during deoptimisation: since live
-  // variables may reference other live variables they need to be proceesed in
-  // the order they appear in the module.
-  std::vector<Value *> Sorted(Res.begin(), Res.end());
-  std::sort(Sorted.begin(), Sorted.end(), [this](Value *A, Value *B) {
-    if (isa<Instruction>(B))
-      return DT.dominates(A, cast<Instruction>(B));
-    return false;
-  });
+  const std::set<Value *> &Live = In[I];
+  Function *Func = I->getFunction();
+
+  std::vector<Value *> Sorted; // The always-use-def-sorted list we return.
+  // Arguments are always in def-use order by definition, so can go straight
+  // into `Sorted`.
+  for (Argument &Arg : Func->args())
+    if (Live.count(&Arg) > 0)
+      Sorted.push_back(&Arg);
+
+  // We need a work queue for the results produced by `Instruction`s. Because,
+  // in general, we expect there to be relatively few elements, we use a
+  // `Vector`, even though in the later loop we'll be regularly popping
+  // elements from towards the front (so we will shuffle elements around in
+  // memory more than we'd like).
+  std::vector<Instruction *> Work;
+  // First, push every live value/`Instruction` into Work.
+  for (BasicBlock &BB : *Func)
+    for (Instruction &Inst : BB)
+      if (Live.count(&Inst) > 0)
+        Work.push_back(&Inst);
+
+  // Second, iterate over the queue performing a partial topological sort.
+  //
+  // On each iteration, find elements that do not use results produced by other
+  // elements in the queue, and push them into `Sorted`. This reaches a fixed
+  // point in two ways: we've emptied the queue entirely; or the only remaining
+  // elements form a cycle and have to be pushed into `Sorted` as-is.
+  while (!Work.empty()) {
+    bool Changed = false;
+    for (auto It = Work.begin(); It != Work.end();) {
+      bool isUsed = false; // Is this Instruction used elsewhere in the queue?
+      for (Value *Op : (*It)->operands()) {
+        if (std::find(Work.begin(), Work.end(), Op) != Work.end()) {
+          isUsed = true;
+          break;
+        }
+      }
+      if (isUsed) {
+        It++;
+        continue;
+      }
+      Sorted.push_back(*It);
+      It = Work.erase(It);
+      Changed = true;
+    }
+    if (!Changed) {
+      // If we get to this point, the remaining elements in the queue form a
+      // cycle: we thus append them to `Sorted` in the order we encountered
+      // them when iterating over the basic instructions in the basic block(s)
+      // they came from.
+      Sorted.insert(Sorted.end(), Work.begin(), Work.end());
+      break;
+    }
+  }
   return Sorted;
 }
 
