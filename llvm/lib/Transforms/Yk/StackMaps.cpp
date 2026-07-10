@@ -105,7 +105,26 @@ public:
               SMCalls.push_back(
                   {I.getNextNode(), LA.getLiveVarsBefore(I.getNextNode())});
             } else {
+              // YKFIXME: As a horrible hack to make stackmaps more like
+              // patchpoints, we add a final element to function call stackmaps
+              // that captures that call's return value if (a) the function can
+              // return a value (b) that value is used after this call. If
+              // either of those two things is not true, we duplicate the last
+              // existing value of the stackmap (if such a value exists). This
+              // behaviour is relied on by yk's aot_ir to create two statepoints
+              // from this single stackmap.
               SMCalls.push_back({I.getNextNode(), LA.getLiveVarsBefore(&I)});
+              bool ReturnIsLive = false;
+              if (!CI.getType()->isVoidTy()) {
+                auto Next = LA.getLiveVarsBefore(I.getNextNode());
+                ReturnIsLive =
+                    std::find(Next.begin(), Next.end(), &CI) != Next.end();
+              }
+              if (ReturnIsLive)
+                SMCalls.back().live_vars.push_back(&CI);
+              else if (!SMCalls.back().live_vars.empty())
+                SMCalls.back().live_vars.push_back(
+                    SMCalls.back().live_vars.back());
             }
           } else if ((isa<BranchInst>(I) &&
                       cast<BranchInst>(I).isConditional()) ||

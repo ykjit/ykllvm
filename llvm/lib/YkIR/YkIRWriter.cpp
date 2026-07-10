@@ -730,6 +730,7 @@ private:
     OutStreamer.emitInt64(SMId);
 
     int Skip = 0;
+    bool DupLast = false;
     if (I->getIntrinsicID() == Intrinsic::experimental_stackmap) {
       // Skip the following arguments: ID, shadow.
       Skip = 2;
@@ -737,15 +738,19 @@ private:
       // Skip the following arguments: ID, shadow, target, target arguments.
       Skip = 4 + cast<ConstantInt>(I->getOperand(PPArgIdxNumTargetArgs))
                      ->getZExtValue();
+      DupLast = I->arg_size() > static_cast<unsigned>(Skip);
     }
 
     // num_lives:
-    OutStreamer.emitInt32(I->arg_size() - Skip);
+    OutStreamer.emitInt32(I->arg_size() - Skip + (DupLast ? 1 : 0));
 
     // lives:
     for (unsigned OI = Skip; OI < I->arg_size(); OI++) {
       serialiseOperand(I, FLCtxt, I->getOperand(OI));
     }
+
+    if (DupLast)
+      serialiseOperand(I, FLCtxt, I->getOperand(I->arg_size() - 1));
   }
 
   void serialisePromotion(CallInst *I, FuncLowerCtxt &FLCtxt,
