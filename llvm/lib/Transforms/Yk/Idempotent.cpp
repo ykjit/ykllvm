@@ -67,9 +67,17 @@ public:
         return Function::Create(RecFType, GlobalVariable::ExternalLinkage,
                                 RecFName, M);
       }
-    } else {
-      return nullptr;
+    } else if (PointerType *PTy = dyn_cast<PointerType>(Ty)) {
+      assert(PTy->getAddressSpace() == 0);
+      std::string RecFName = YK_IDEMPOTENT_RECORDER_PREFIX "ptr";
+      if (Function *RecF = M.getFunction(RecFName)) {
+        return RecF; // already declared.
+      }
+      FunctionType *RecFType = FunctionType::get(PTy, {PTy}, false);
+      return Function::Create(RecFType, GlobalVariable::ExternalLinkage,
+                              RecFName, M);
     }
+    return nullptr;
   }
 
   bool insertCalls(Module &M) {
