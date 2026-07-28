@@ -40,6 +40,8 @@ public:
     switch (ITy->getBitWidth()) {
     case 8:
       return std::string(YK_IDEMPOTENT_RECORDER_PREFIX "i8");
+    case 16:
+      return std::string(YK_IDEMPOTENT_RECORDER_PREFIX "i16");
     case 32:
       return std::string(YK_IDEMPOTENT_RECORDER_PREFIX "i32");
     case 64:
