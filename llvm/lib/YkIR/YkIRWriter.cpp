@@ -218,6 +218,7 @@ enum ConstKind {
   ConstKindConstExpr,
   ConstKindGlobalVar,
   ConstKindPoison,
+  ConstKindUndef,
   ConstKindUnimplemented,
 };
 
@@ -858,6 +859,14 @@ private:
              (Attr.getKindAsEnum() == Attribute::ReadOnly))) {
           continue;
         }
+        // A struct return (>16 bytes on x86_64 SysV) is passed as a hidden
+        // pointer argument.
+        if (((Attr.getKindAsEnum() == Attribute::StructRet) ||
+             (Attr.getKindAsEnum() == Attribute::NoAlias) ||
+             (Attr.getKindAsEnum() == Attribute::Writable) ||
+             (Attr.getKindAsEnum() == Attribute::DeadOnUnwind))) {
+          continue;
+        }
         // "indicates that the annotated function will always return at least a
         // given number of bytes (or null)" -- not relevant for Yk at this
         // time.
@@ -1479,6 +1488,12 @@ private:
     serialiseOperand(I, FLCtxt, I->getAggregateOperand());
     // elem:
     serialiseOperand(I, FLCtxt, I->getInsertedValueOperand());
+    // num_indices:
+    OutStreamer.emitSizeT(I->getNumIndices());
+    // indices:
+    for (unsigned Idx : I->getIndices()) {
+      OutStreamer.emitSizeT(Idx);
+    }
 
     FLCtxt.updateVLMap(I, {BBIdx, InstIdx});
     InstIdx++;
@@ -2101,6 +2116,13 @@ private:
     OutStreamer.emitSizeT(typeIndex(PV->getType()));
   }
 
+  void serialiseUndefValue(UndefValue *UV) {
+    // `Const` discriminator:
+    OutStreamer.emitInt8(ConstKindUndef);
+    // ty_idx:
+    OutStreamer.emitSizeT(typeIndex(UV->getType()));
+  }
+
   void serialiseConstantInt(ConstantInt *CI) {
     // `Const` discriminator:
     OutStreamer.emitInt8(ConstKindVal);
@@ -2220,6 +2242,8 @@ private:
   void serialiseConstant(Constant *C) {
     if (PoisonValue *PV = dyn_cast<PoisonValue>(C)) {
       serialisePoisonValue(PV);
+    } else if (UndefValue *UV = dyn_cast<UndefValue>(C)) {
+      serialiseUndefValue(UV);
     } else if (ConstantInt *CI = dyn_cast<ConstantInt>(C)) {
       serialiseConstantInt(CI);
     } else if (ConstantPointerNull *NP = dyn_cast<ConstantPointerNull>(C)) {
