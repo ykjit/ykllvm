@@ -149,6 +149,11 @@ private:
         return true; // could be traced.
       }
 
+      if (CurF->hasFnAttribute(YK_INDIRECT_INLINE_FNATTR)) {
+        // Functions called by a yk_indirect_inline function can be traced.
+        return true;
+      }
+
       if (Seen.find(CurF) != Seen.end()) {
         // We've already dealt with this function via another call path.
         continue;
