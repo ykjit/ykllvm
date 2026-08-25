@@ -1,7 +1,10 @@
 ; RUNNING TEST EXAMPLE: llvm-lit llvm/test/Transforms/Yk/BasicBlockTracer.ll
 ; RUN: llc -stop-after yk-basicblock-tracer-pass --yk-basicblock-tracer < %s  | FileCheck %s
 
-; CHECK:  call preserve_allcc void @__yk_trace_basicblock_wrapper(i32 0)
+; CHECK: @__yk_thread_tracing_state = external thread_local(initialexec) global i8
+; CHECK: @__yk_trace_buffer = external thread_local(initialexec) global { ptr, ptr }
+
+; CHECK:  call preserve_allcc void @__yk_trace_basicblock(i32 0)
 define dso_local noundef i32 @main() #0 {
   %1 = alloca i32, align 4
   %2 = alloca i32, align 4
@@ -11,47 +14,47 @@ define dso_local noundef i32 @main() #0 {
   store i32 0, i32* %3, align 4
   br label %4
 
-; CHECK:  call preserve_allcc void @__yk_trace_basicblock_wrapper(i32 1)
+; CHECK:  call preserve_allcc void @__yk_trace_basicblock(i32 1)
 4:                                                ; preds = %13, %0
   %5 = load i32, i32* %3, align 4
   %6 = icmp slt i32 %5, 43
   br i1 %6, label %7, label %16
 
-; CHECK:  call preserve_allcc void @__yk_trace_basicblock_wrapper(i32 2)
+; CHECK:  call preserve_allcc void @__yk_trace_basicblock(i32 2)
 7:                                                ; preds = %4
   %8 = load i32, i32* %3, align 4
   %9 = icmp eq i32 %8, 42
   br i1 %9, label %10, label %12
 
-; CHECK:  call preserve_allcc void @__yk_trace_basicblock_wrapper(i32 3)
+; CHECK:  call preserve_allcc void @__yk_trace_basicblock(i32 3)
 10:                                               ; preds = %7
   %11 = load i32, i32* %3, align 4
   store i32 %11, i32* %1, align 4
   br label %17
 
-; CHECK:  call preserve_allcc void @__yk_trace_basicblock_wrapper(i32 4)
+; CHECK:  call preserve_allcc void @__yk_trace_basicblock(i32 4)
 12:                                               ; preds = %7
   br label %13
 
-; CHECK:  call preserve_allcc void @__yk_trace_basicblock_wrapper(i32 5)
+; CHECK:  call preserve_allcc void @__yk_trace_basicblock(i32 5)
 13:                                               ; preds = %12
   %14 = load i32, i32* %3, align 4
   %15 = add nsw i32 %14, 1
   store i32 %15, i32* %3, align 4
   br label %4, !llvm.loop !6
 
-; CHECK:  call preserve_allcc void @__yk_trace_basicblock_wrapper(i32 6)
+; CHECK:  call preserve_allcc void @__yk_trace_basicblock(i32 6)
 16:                                               ; preds = %4
   store i32 0, i32* %1, align 4
   br label %17
 
-; CHECK:  call preserve_allcc void @__yk_trace_basicblock_wrapper(i32 7)
+; CHECK:  call preserve_allcc void @__yk_trace_basicblock(i32 7)
 17:                                               ; preds = %16, %10
   %18 = load i32, i32* %1, align 4
   ret i32 %18
 }
 
-; CHECK:  call preserve_allcc void @__yk_trace_basicblock_wrapper(i32 65536)
+; CHECK:  call preserve_allcc void @__yk_trace_basicblock(i32 65536)
 define dso_local noundef i32 @_Z5checki(i32 noundef %0) #1 {
   %2 = alloca i32, align 4
   store i32 %0, i32* %2, align 4
@@ -60,6 +63,12 @@ define dso_local noundef i32 @_Z5checki(i32 noundef %0) #1 {
   %5 = zext i1 %4 to i32
   ret i32 %5
 }
+
+; CHECK-LABEL: define internal preserve_allcc void @__yk_trace_basicblock(i32 %0)
+; CHECK: call{{.*}} ptr @llvm.threadlocal.address.p0({{.*}}@__yk_trace_buffer)
+; CHECK: icmp ult ptr
+; CHECK: store i32 %0, ptr
+; CHECK: ret void
 
 attributes #0 = { mustprogress noinline norecurse nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 attributes #1 = { mustprogress noinline nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
