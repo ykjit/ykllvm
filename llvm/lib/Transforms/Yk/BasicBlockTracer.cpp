@@ -49,9 +49,9 @@ GlobalVariable *getOrCreateThreadTracingState(Module &M) {
   if (!TL) {
     TL = new GlobalVariable(M, I8Ty, false, GlobalValue::ExternalLinkage,
                             nullptr, YK_THREAD_TRACING_STATE_TL);
-    TL->setThreadLocalMode(GlobalValue::GeneralDynamicTLSModel);
     TL->setAlignment(Align(1));
   }
+  TL->setThreadLocalMode(GlobalValue::InitialExecTLSModel);
   return TL;
 }
 } // namespace llvm
@@ -67,37 +67,68 @@ struct YkBasicBlockTracer : public ModulePass {
   bool runOnModule(Module &M) override {
     LLVMContext &Context = M.getContext();
 
+    // Declare the basic block recorder function, whose sole argument is a
+    // 32-bit int. This uses the `PreserveAll` API so that compiled interpreter
+    // code -- at least in the sense of register allocation -- isn't perturbed
+    // by the presence of these calls. In pseudocode we generate a function
+    // which looks roughly as follows:
+    //
+    // ```
+    // static preserve_all void __yk_trace_basicblock(uint32_t block_id) {
+    //    uint32_t *cursor = __yk_trace_buffer.cursor;
+    //    if (cursor <= __yk_trace_buffer.end) {
+    //      *cursor = block_id;
+    //      __yk_trace_buffer.cursor = cursor + 1;
+    //    }
+    //  }
+    //  ```
+
     // Get or create the thread tracing state TLS variable.
     llvm::Type *I8Ty = llvm::Type::getInt8Ty(Context);
     GlobalVariable *ThreadTracingTL = getOrCreateThreadTracingState(M);
 
-    // Declare the basic block recorder function.
-    //
-    // The sole argument is a 16-bit function index and a 16-bit basic block
-    // index packed into a 32-bit integer.
-    Type *ReturnType = Type::getVoidTy(Context);
-    Type *ArgType = Type::getInt32Ty(Context);
-    FunctionType *FType = FunctionType::get(ReturnType, {ArgType}, false);
-    Function *TraceFuncInner = Function::Create(
-        FType, GlobalVariable::ExternalLinkage, YK_TRACE_FUNCTION, M);
-
-    // Define the trace recorder wrapper.
-    //
-    // We use a wrapper so we can use an ABI that disrupts register allocation
-    // in the interpreter code to a lesser extent. The wrapper is required
-    // because the actual recorder function is defined in the JIT runtime's
-    // shared object and we can't change the ABI for library calls.
-    llvm::Function *TraceFunc = Function::Create(
-        FType, llvm::Function::InternalLinkage, YK_TRACE_FUNCTION_WRAPPER, M);
-    TraceFunc->setCallingConv(llvm::CallingConv::PreserveAll);
-    TraceFunc->addFnAttr(YK_OUTLINE_FNATTR);
-    llvm::BasicBlock *WrapperBB = BasicBlock::Create(Context, "", TraceFunc);
-    IRBuilder<> Builder(WrapperBB);
-    std::vector<Value *> InnerArgs;
-    for (Argument &A : TraceFunc->args()) {
-      InnerArgs.push_back(&A);
+    Type *I32Ty = Type::getInt32Ty(Context);
+    PointerType *I32PtrTy = PointerType::getUnqual(Context);
+    StructType *TraceBufferTy = StructType::get(I32PtrTy, I32PtrTy);
+    GlobalVariable *TraceBufferTL = M.getNamedGlobal(YK_TRACE_BUFFER_TL);
+    if (!TraceBufferTL) {
+      TraceBufferTL = new GlobalVariable(M, TraceBufferTy, false,
+                                         GlobalValue::ExternalLinkage, nullptr,
+                                         YK_TRACE_BUFFER_TL);
+      TraceBufferTL->setThreadLocalMode(GlobalValue::InitialExecTLSModel);
+      TraceBufferTL->setAlignment(
+          M.getDataLayout().getABITypeAlign(TraceBufferTy));
     }
-    Builder.CreateCall(TraceFuncInner, InnerArgs);
+
+    IRBuilder<> Builder(Context);
+
+    Type *ReturnType = Type::getVoidTy(Context);
+    FunctionType *FType = FunctionType::get(ReturnType, {I32Ty}, false);
+    Function *TraceFunc = Function::Create(
+        FType, GlobalVariable::InternalLinkage, YK_TRACE_FUNCTION, M);
+    TraceFunc->setCallingConv(CallingConv::PreserveAll);
+    TraceFunc->addFnAttr(YK_OUTLINE_FNATTR);
+    BasicBlock *CapacityBB = BasicBlock::Create(Context, "", TraceFunc);
+    BasicBlock *RecordBB = BasicBlock::Create(Context, "", TraceFunc);
+    BasicBlock *DoneBB = BasicBlock::Create(Context, "", TraceFunc);
+
+    Builder.SetInsertPoint(CapacityBB);
+    Value *TraceBuffer = Builder.CreateThreadLocalAddress(TraceBufferTL);
+    Value *CursorPtr = Builder.CreateStructGEP(TraceBufferTy, TraceBuffer, 0);
+    LoadInst *Cursor = Builder.CreateLoad(I32PtrTy, CursorPtr);
+    Value *EndPtr = Builder.CreateStructGEP(TraceBufferTy, TraceBuffer, 1);
+    LoadInst *End = Builder.CreateLoad(I32PtrTy, EndPtr);
+    Value *HasCapacity = Builder.CreateICmpULT(Cursor, End);
+    Builder.CreateCondBr(HasCapacity, RecordBB, DoneBB);
+
+    Builder.SetInsertPoint(RecordBB);
+    Builder.CreateStore(TraceFunc->getArg(0), Cursor);
+    Value *NextCursor =
+        Builder.CreateInBoundsGEP(I32Ty, Cursor, Builder.getInt32(1));
+    Builder.CreateStore(NextCursor, CursorPtr);
+    Builder.CreateBr(DoneBB);
+
+    Builder.SetInsertPoint(DoneBB);
     Builder.CreateRetVoid();
 
     // Metadata used to help the serialiser identify the purpose of a block.
