@@ -144,6 +144,24 @@
 // STACKMAP 0xdead
 // mov rax, rbp + 10
 // ```
+//
+// ### Switch condition and zero extension
+//
+// ```
+// $ecx = MOVZX32rr8 $dl
+// STACKMAP $ecx
+// $dl = SUB8ri $dl, 3
+// ```
+//
+// Deoptimisation resumes after the stackmap, so restoring `$ecx` alone leaves
+// `$dl` undefined. Move the extension after the stackmap and track its source:
+//
+// ```
+// STACKMAP $dl
+// $ecx = MOVZX32rr8 $dl
+// $dl = SUB8ri $dl, 3
+// ```
+//
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/LivePhysRegs.h"
@@ -162,6 +180,9 @@
 #include "llvm/IR/GlobalAlias.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/TargetParser/Triple.h"
 #include "llvm/Transforms/Yk/BasicBlockTracer.h"
 
 #include <map>
@@ -204,10 +225,16 @@ INITIALIZE_PASS(FixStackmapsSpillReloads, DEBUG_TYPE, "Fixup Stackmap Spills",
 const TargetRegisterInfo *TRI;
 
 bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
+  // For now, due to the zero-ext case below, this function will not do the
+  // right thing on non-x64.
+  if (!MF.getTarget().getTargetTriple().isX86_64())
+    report_fatal_error("FixStackmapsSpillReloads only supports x86-64 targets");
+
   TRI = MF.getSubtarget().getRegisterInfo();
   bool Changed = false;
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
   for (MachineBasicBlock &MBB : MF) {
+    bool BlockChanged = false;
     bool Collect = false;
     std::set<MachineInstr *> Erased;
     MachineInstr *LastCall = nullptr;
@@ -248,7 +275,38 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
       if (MI.getOpcode() == TargetOpcode::STACKMAP) {
         if (LastCall == nullptr) {
           // There wasn't a call preceeding this stackmap, so this must be
-          // attached to a branch instruction.
+          // attached to a branch or switch instruction.
+
+          // SelectionDAG treats zero (but not, it seems, sign) extension
+          // specially in the context of switch conditions, and we need to
+          // track the chain beyond the zero extension. Unfortunately that
+          // knowledge has been partly lost by this point so we have to recover
+          // it in a hacky manner. The nicest thing would be if we could say
+          // "is `PrevMI` a zero extension instruction?" but there's nothing in
+          // LLVM's API for that (at least right now). For now, we simply hack
+          // in the x64 case we've seen: this is clearly horrible (e.g. there
+          // are other kinds of zero extension instructions we probably need to
+          // support) but oh well.
+          MachineInstr *PrevMI = MI.getPrevNode();
+          if (PrevMI && TII->getName(PrevMI->getOpcode()) == "MOVZX32rr8" &&
+              PrevMI->getNumExplicitOperands() == 2 &&
+              PrevMI->getOperand(0).isReg() && PrevMI->getOperand(0).isDef() &&
+              PrevMI->getOperand(1).isReg() && PrevMI->getOperand(1).isUse()) {
+            Register Dst = PrevMI->getOperand(0).getReg();
+            Register Src = PrevMI->getOperand(1).getReg();
+            for (MachineOperand &Op : MI.explicit_uses()) {
+              if (!Op.isReg() || Op.getReg() != Dst)
+                continue;
+              Op.setReg(Src);
+              Op.setSubReg(0);
+              Op.setIsKill(false);
+              MBB.splice(std::next(MI.getIterator()), &MBB,
+                         PrevMI->getIterator());
+              BlockChanged = true;
+              Changed = true;
+              break;
+            }
+          }
           continue;
         }
         Collect = false;
@@ -378,6 +436,7 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
         // Remember the old stackmap instruction for deletion later.
         Erased.insert(&MI);
         LastCall = nullptr;
+        BlockChanged = true;
         Changed = true;
       }
 
@@ -406,7 +465,7 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
     for (MachineInstr *E : Erased) {
       E->eraseFromParent();
     }
-    if (Erased.size() > 0) {
+    if (BlockChanged) {
       // We have made changes so we need to recompute register liveness which
       // may no longer be accurate.
       recomputeLivenessFlags(MBB);
