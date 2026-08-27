@@ -86,6 +86,7 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/Yk.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -2239,10 +2240,12 @@ bool CodeGenPrepare::optimizeCmp(CmpInst *Cmp, ModifyDT &ModifiedDT) {
   if (sinkCmpExpression(Cmp, *TLI, *DL))
     return true;
 
-  if (combineToUAddWithOverflow(Cmp, ModifiedDT))
+  if (!YkNoOverflowIntrinsicFormation &&
+      combineToUAddWithOverflow(Cmp, ModifiedDT))
     return true;
 
-  if (combineToUSubWithOverflow(Cmp, ModifiedDT))
+  if (!YkNoOverflowIntrinsicFormation &&
+      combineToUSubWithOverflow(Cmp, ModifiedDT))
     return true;
 
   if (unfoldPowerOf2Test(Cmp))
