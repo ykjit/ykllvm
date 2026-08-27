@@ -86,7 +86,6 @@
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/Yk.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
@@ -508,7 +507,7 @@ public:
 char CodeGenPrepareLegacyPass::ID = 0;
 
 bool CodeGenPrepareLegacyPass::runOnFunction(Function &F) {
-  if (skipFunction(F) && !YkMarkTraceableOptNone)
+  if (skipFunction(F))
     return false;
   auto TM = &getAnalysis<TargetPassConfig>().getTM<TargetMachine>();
   CodeGenPrepare CGP(TM);
@@ -2240,12 +2239,10 @@ bool CodeGenPrepare::optimizeCmp(CmpInst *Cmp, ModifyDT &ModifiedDT) {
   if (sinkCmpExpression(Cmp, *TLI, *DL))
     return true;
 
-  if (!YkNoOverflowIntrinsicFormation &&
-      combineToUAddWithOverflow(Cmp, ModifiedDT))
+  if (combineToUAddWithOverflow(Cmp, ModifiedDT))
     return true;
 
-  if (!YkNoOverflowIntrinsicFormation &&
-      combineToUSubWithOverflow(Cmp, ModifiedDT))
+  if (combineToUSubWithOverflow(Cmp, ModifiedDT))
     return true;
 
   if (unfoldPowerOf2Test(Cmp))

@@ -15,6 +15,5 @@ extern bool YkOutlineUntraceable;
 extern bool YkModuleClone;
 extern bool YkPatchpointDirectFunctionsCall;
 extern bool YkNoVectorize;
-extern bool YkNoOverflowIntrinsicFormation;
 
 #endif

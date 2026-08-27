@@ -156,22 +156,6 @@ struct CreateYkNoVectorizeParser {
 } // namespace
 static ManagedStatic<cl::opt<bool, true>, CreateYkNoVectorizeParser> YkNoVectorizeParser;
 
-bool YkNoOverflowIntrinsicFormation;
-namespace {
-struct CreateYkNoOverflowIntrinsicFormationParser {
-  static void *call() {
-    return new cl::opt<bool, true>(
-        "yk-no-overflow-intrinsics",
-        cl::desc("Prevent optimisation passes from forming overflow "
-                 "intrinsics unsupported by yk"),
-        cl::NotHidden, cl::location(YkNoOverflowIntrinsicFormation));
-  }
-};
-} // namespace
-static ManagedStatic<cl::opt<bool, true>,
-                     CreateYkNoOverflowIntrinsicFormationParser>
-    YkNoOverflowIntrinsicFormationParser;
-
 void llvm::initYkOptions() {
   *YkStackMapAdditionalLocsParser;
   *YkStackmapsSpillFixParser;
@@ -184,5 +168,4 @@ void llvm::initYkOptions() {
   *YkOutlineUntraceableParser;
   *YkModuleCloneParser;
   *YkNoVectorizeParser;
-  *YkNoOverflowIntrinsicFormationParser;
 }
