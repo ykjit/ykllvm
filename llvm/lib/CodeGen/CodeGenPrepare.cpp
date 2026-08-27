@@ -95,6 +95,7 @@
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/SimplifyLibCalls.h"
 #include "llvm/Transforms/Utils/SizeOpts.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
@@ -508,7 +509,7 @@ public:
 char CodeGenPrepareLegacyPass::ID = 0;
 
 bool CodeGenPrepareLegacyPass::runOnFunction(Function &F) {
-  if (skipFunction(F) && !YkMarkTraceableOptNone)
+  if (skipFunction(F) && !F.hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
   auto TM = &getAnalysis<TargetPassConfig>().getTM<TargetMachine>();
   CodeGenPrepare CGP(TM);
