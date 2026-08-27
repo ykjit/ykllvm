@@ -53,6 +53,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Scalar/LoopStrengthReduce.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -7110,7 +7111,8 @@ static bool ReduceLoopStrength(Loop *L, IVUsers &IU, ScalarEvolution &SE,
 }
 
 bool LoopStrengthReduce::runOnLoop(Loop *L, LPPassManager & /*LPM*/) {
-  if (skipLoop(L))
+  if (skipLoop(L) && !L->getHeader()->getParent()->hasFnAttribute(
+                         YK_AUTO_OPTNONE_FNATTR))
     return false;
 
   auto &IU = getAnalysis<IVUsersWrapperPass>().getIU();
