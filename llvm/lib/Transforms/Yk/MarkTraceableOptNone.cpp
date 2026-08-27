@@ -40,7 +40,10 @@ public:
       }
 
       F.removeFnAttr(Attribute::OptimizeForSize);
-      F.addFnAttr(Attribute::OptimizeNone);
+      if (!F.hasOptNone()) {
+        F.addFnAttr(Attribute::OptimizeNone);
+        F.addFnAttr(YK_AUTO_OPTNONE_FNATTR);
+      }
       F.addFnAttr(Attribute::NoInline);
       Changed = true;
     }

@@ -3,6 +3,8 @@
 
 #include "llvm/Pass.h"
 
+#define YK_AUTO_OPTNONE_FNATTR "yk_autooptnone"
+
 namespace llvm {
 ModulePass *createYkMarkTraceableOptNonePass();
 } // namespace llvm
