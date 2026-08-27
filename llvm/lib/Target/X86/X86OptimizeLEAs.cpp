@@ -46,6 +46,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include <cassert>
 #include <cstdint>
 #include <iterator>
@@ -753,7 +754,8 @@ bool X86OptimizeLEAsImpl::runOnMachineFunction(
 }
 
 bool X86OptimizeLEAsLegacy::runOnMachineFunction(MachineFunction &MF) {
-  if (skipFunction(MF.getFunction()))
+  if (skipFunction(MF.getFunction()) &&
+      !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
   ProfileSummaryInfo *PSI =
       &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
