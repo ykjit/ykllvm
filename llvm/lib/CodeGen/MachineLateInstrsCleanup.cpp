@@ -26,8 +26,10 @@
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/InitializePasses.h"
+#include "llvm/IR/Function.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 
 using namespace llvm;
 
@@ -92,7 +94,8 @@ INITIALIZE_PASS(MachineLateInstrsCleanupLegacy, DEBUG_TYPE,
                 "Machine Late Instructions Cleanup Pass", false, false)
 
 bool MachineLateInstrsCleanupLegacy::runOnMachineFunction(MachineFunction &MF) {
-  if (skipFunction(MF.getFunction()))
+  if (skipFunction(MF.getFunction()) &&
+      !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
 
   return MachineLateInstrsCleanup().run(MF);

@@ -277,34 +277,45 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
           // There wasn't a call preceeding this stackmap, so this must be
           // attached to a branch or switch instruction.
 
-          // SelectionDAG treats zero (but not, it seems, sign) extension
-          // specially in the context of switch conditions, and we need to
-          // track the chain beyond the zero extension. Unfortunately that
-          // knowledge has been partly lost by this point so we have to recover
-          // it in a hacky manner. The nicest thing would be if we could say
-          // "is `PrevMI` a zero extension instruction?" but there's nothing in
-          // LLVM's API for that (at least right now). For now, we simply hack
-          // in the x64 case we've seen: this is clearly horrible (e.g. there
-          // are other kinds of zero extension instructions we probably need to
-          // support) but oh well.
-          MachineInstr *PrevMI = MI.getPrevNode();
-          if (PrevMI && TII->getName(PrevMI->getOpcode()) == "MOVZX32rr8" &&
-              PrevMI->getNumExplicitOperands() == 2 &&
-              PrevMI->getOperand(0).isReg() && PrevMI->getOperand(0).isDef() &&
-              PrevMI->getOperand(1).isReg() && PrevMI->getOperand(1).isUse()) {
-            Register Dst = PrevMI->getOperand(0).getReg();
-            Register Src = PrevMI->getOperand(1).getReg();
+          // SelectionDAG can use a value V in a switch and also record a zero
+          // extension of V in the associated stackmap. We track V directly in
+          // such cases, and ensure the zero extension comes after the stackmap
+          // so that after deopt the upper bits are dealt with correctly.
+          //
+          // So far we've only seen zero extension in such cases. However, the
+          // code below also captures (via isCoalescableExtInstr) sign
+          // extension: it seems plausible it is correct in such cases too, but
+          // this is currently untested. Ideally we would assert in such cases,
+          // but there is no platform independent way to detect zero/sign
+          // extension in the LLVM API at the point that this function is
+          // executing.
+          MachineInstr *ExtMI = nullptr;
+          if (MI.getIterator() != MBB.instr_begin())
+            ExtMI = &*prev_nodbg(MI.getIterator(), MBB.instr_begin());
+          bool MoveExt = true;
+          Register Dst, Src;
+          unsigned SubIdx;
+          if (!ExtMI || !TII->isCoalescableExtInstr(*ExtMI, Src, Dst, SubIdx)) {
+            auto NextMI = next_nodbg(MI.getIterator(), MBB.instr_end());
+            ExtMI = NextMI == MBB.instr_end() ? nullptr : &*NextMI;
+            MoveExt = false;
+          }
+          if (ExtMI && TII->isCoalescableExtInstr(*ExtMI, Src, Dst, SubIdx)) {
+            bool Replaced = false;
             for (MachineOperand &Op : MI.explicit_uses()) {
-              if (!Op.isReg() || Op.getReg() != Dst)
+              if (!Op.isReg() || !TRI->regsOverlap(Op.getReg(), Dst))
                 continue;
               Op.setReg(Src);
               Op.setSubReg(0);
               Op.setIsKill(false);
-              MBB.splice(std::next(MI.getIterator()), &MBB,
-                         PrevMI->getIterator());
+              Replaced = true;
               BlockChanged = true;
               Changed = true;
-              break;
+            }
+            if (Replaced && MoveExt) {
+              // Ensure the extension instruction is placed after the stackmap.
+              MBB.splice(std::next(MI.getIterator()), &MBB,
+                         ExtMI->getIterator());
             }
           }
           continue;

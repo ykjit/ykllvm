@@ -66,6 +66,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/PeepholeOptimizer.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
@@ -1678,7 +1679,8 @@ PeepholeOptimizerPass::run(MachineFunction &MF,
 }
 
 bool PeepholeOptimizerLegacy::runOnMachineFunction(MachineFunction &MF) {
-  if (skipFunction(MF.getFunction()))
+  if (skipFunction(MF.getFunction()) &&
+      !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
   auto *DT = Aggressive
                  ? &getAnalysis<MachineDominatorTreeWrapperPass>().getDomTree()
