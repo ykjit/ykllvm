@@ -1,16 +1,23 @@
 # RUN: llc -mtriple=x86_64-- -stop-after fix-stackmaps-spill-reloads --yk-stackmap-spillreloads-fix %s -o - | FileCheck %s
 
 # SelectionDAG can lower a switch using the source of a zero extension after a
-# branch stackmap.
+# branch stackmap. Ensure that deoptimisation restores that source and resumes
+# by re-executing the extension.
 
-# CHECK-LABEL: name: switch_lookthrough
+# CHECK-LABEL: name: switch_zeroext
 # CHECK-LABEL: bb.0:
-# CHECK: STACKMAP 1, 0, $dl, 3
+# CHECK: STACKMAP 1, 0, $dl, 3, $dl, 3
 # CHECK-NEXT: dead $ecx = MOVZX32rr8 $dl, implicit-def dead $rcx
 # CHECK-NEXT: $dl = SUB8ri killed $dl, 3, implicit-def dead $eflags
 
+# CHECK-LABEL: name: switch_zeroext_16
+# CHECK-LABEL: bb.0:
+# CHECK: STACKMAP 2, 0, $dx, 3, $dx, 3
+# CHECK-NEXT: $ecx = MOVZX32rr16 $dx, implicit-def $rcx
+# CHECK-NEXT: $dx = SUB16ri killed $dx, 3, implicit-def dead $eflags
+
 ---
-name: switch_lookthrough
+name: switch_zeroext
 tracksRegLiveness: true
 frameInfo:
   hasStackMap: true
@@ -18,7 +25,22 @@ body: |
   bb.0:
     liveins: $rdx
     $ecx = MOVZX32rr8 $dl, implicit-def $rcx
-    STACKMAP 1, 0, $ecx, 3
+    DBG_PHI $rdx, 0
+    STACKMAP 1, 0, $ecx, 3, $cl, 3
     $dl = SUB8ri $dl, 3, implicit-def $eflags
     RET64 implicit $dl
+...
+---
+name: switch_zeroext_16
+tracksRegLiveness: true
+frameInfo:
+  hasStackMap: true
+body: |
+  bb.0:
+    liveins: $rdx, $rcx
+    STACKMAP 2, 0, $ecx, 3, $cx, 3
+    DBG_PHI $rdx, 1
+    $ecx = MOVZX32rr16 $dx, implicit-def $rcx
+    $dx = SUB16ri $dx, 3, implicit-def $eflags
+    RET64 implicit $ecx, implicit $dx
 ...
