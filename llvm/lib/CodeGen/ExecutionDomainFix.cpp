@@ -7,6 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/ExecutionDomainFix.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/Support/Debug.h"
@@ -411,7 +413,8 @@ void ExecutionDomainFix::processBasicBlock(
 }
 
 bool ExecutionDomainFix::runOnMachineFunction(MachineFunction &mf) {
-  if (skipFunction(mf.getFunction()))
+  if (skipFunction(mf.getFunction()) &&
+      !mf.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
   MF = &mf;
   TII = MF->getSubtarget().getInstrInfo();

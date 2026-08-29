@@ -18,6 +18,8 @@
 
 #include "MCTargetDesc/X86BaseInfo.h"
 #include "X86.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "X86FrameLowering.h"
 #include "X86InstrInfo.h"
 #include "X86MachineFunctionInfo.h"
@@ -634,7 +636,8 @@ FunctionPass *llvm::createX86CallFrameOptimizationLegacyPass() {
 }
 
 bool X86CallFrameOptimizationLegacy::runOnMachineFunction(MachineFunction &MF) {
-  if (skipFunction(MF.getFunction()))
+  if (skipFunction(MF.getFunction()) &&
+      !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
   X86CallFrameOptimizationImpl Impl;
   return Impl.runOnMachineFunction(MF);

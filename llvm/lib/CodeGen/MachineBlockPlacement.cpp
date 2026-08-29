@@ -25,6 +25,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/MachineBlockPlacement.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "BranchFolding.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
@@ -641,7 +643,8 @@ public:
   MachineBlockPlacementLegacy() : MachineFunctionPass(ID) {}
 
   bool runOnMachineFunction(MachineFunction &MF) override {
-    if (skipFunction(MF.getFunction()))
+    if (skipFunction(MF.getFunction()) &&
+        !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
       return false;
 
     auto *MBPI =
