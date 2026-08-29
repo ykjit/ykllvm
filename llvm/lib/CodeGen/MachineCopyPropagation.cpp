@@ -49,6 +49,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/MachineCopyPropagation.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
@@ -1569,7 +1571,8 @@ void MachineCopyPropagation::EliminateSpillageCopies(MachineBasicBlock &MBB) {
 }
 
 bool MachineCopyPropagationLegacy::runOnMachineFunction(MachineFunction &MF) {
-  if (skipFunction(MF.getFunction()))
+  if (skipFunction(MF.getFunction()) &&
+      !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
 
   return MachineCopyPropagation(UseCopyInstr).run(MF);

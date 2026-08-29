@@ -13,6 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/TailDuplication.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "llvm/Analysis/ProfileSummaryInfo.h"
 #include "llvm/CodeGen/LazyMachineBlockFrequencyInfo.h"
 #include "llvm/CodeGen/MBFIWrapper.h"
@@ -79,7 +81,8 @@ INITIALIZE_PASS(EarlyTailDuplicateLegacy, "early-tailduplication",
                 "Early Tail Duplication", false, false)
 
 bool TailDuplicateBaseLegacy::runOnMachineFunction(MachineFunction &MF) {
-  if (skipFunction(MF.getFunction()))
+  if (skipFunction(MF.getFunction()) &&
+      !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
 
   auto MBPI = &getAnalysis<MachineBranchProbabilityInfoWrapperPass>().getMBPI();

@@ -45,6 +45,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "X86InstrInfo.h"
 #include "X86Subtarget.h"
 #include "llvm/ADT/Statistic.h"
@@ -472,7 +474,8 @@ void X86FixupBWInstImpl::processBasicBlock(MachineFunction &MF,
 }
 
 bool X86FixupBWInstLegacy::runOnMachineFunction(MachineFunction &MF) {
-  if (skipFunction(MF.getFunction()))
+  if (skipFunction(MF.getFunction()) &&
+      !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
   ProfileSummaryInfo *PSI =
       &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();

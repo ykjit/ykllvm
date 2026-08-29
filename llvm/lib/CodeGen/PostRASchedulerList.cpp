@@ -18,6 +18,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/PostRASchedulerList.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/CodeGen/AntiDepBreaker.h"
@@ -358,7 +360,8 @@ bool PostRAScheduler::run(MachineFunction &MF) {
 }
 
 bool PostRASchedulerLegacy::runOnMachineFunction(MachineFunction &MF) {
-  if (skipFunction(MF.getFunction()))
+  if (skipFunction(MF.getFunction()) &&
+      !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
 
   MachineLoopInfo *MLI = &getAnalysis<MachineLoopInfoWrapperPass>().getLI();

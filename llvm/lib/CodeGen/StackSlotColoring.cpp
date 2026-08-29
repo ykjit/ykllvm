@@ -11,6 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/StackSlotColoring.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
@@ -563,7 +565,8 @@ bool StackSlotColoring::run(MachineFunction &MF) {
 }
 
 bool StackSlotColoringLegacy::runOnMachineFunction(MachineFunction &MF) {
-  if (skipFunction(MF.getFunction()))
+  if (skipFunction(MF.getFunction()) &&
+      !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
 
   LiveStacks *LS = &getAnalysis<LiveStacksWrapperLegacy>().getLS();

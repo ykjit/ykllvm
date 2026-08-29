@@ -18,6 +18,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ADT/DepthFirstIterator.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/ReachingDefAnalysis.h"
@@ -275,7 +277,8 @@ void BreakFalseDeps::processBasicBlock(MachineBasicBlock *MBB) {
 }
 
 bool BreakFalseDeps::runOnMachineFunction(MachineFunction &mf) {
-  if (skipFunction(mf.getFunction()))
+  if (skipFunction(mf.getFunction()) &&
+      !mf.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
   MF = &mf;
   TII = MF->getSubtarget().getInstrInfo();

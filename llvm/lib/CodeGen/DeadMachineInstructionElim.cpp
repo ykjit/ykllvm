@@ -11,6 +11,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/DeadMachineInstructionElim.h"
+#include "llvm/IR/Function.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include "llvm/ADT/PostOrderIterator.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/LiveRegUnits.h"
@@ -48,7 +50,8 @@ public:
   DeadMachineInstructionElim() : MachineFunctionPass(ID) {}
 
   bool runOnMachineFunction(MachineFunction &MF) override {
-    if (skipFunction(MF.getFunction()))
+    if (skipFunction(MF.getFunction()) &&
+        !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
       return false;
     return DeadMachineInstructionElimImpl().runImpl(MF);
   }
