@@ -197,7 +197,6 @@ struct YkBasicBlockTracer : public ModulePass {
         }
         LoadInst *ThreadTracingState =
             Builder.CreateLoad(I8Ty, ThreadTracingTL);
-        ThreadTracingState->setAtomic(llvm::AtomicOrdering::Monotonic);
         Value *DontRec = Builder.CreateICmpEQ(
             ThreadTracingState, ConstantInt::get(I8Ty, ThreadTracingStateNone));
 
