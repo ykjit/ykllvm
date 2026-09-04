@@ -101,6 +101,7 @@
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include <cassert>
 #include <cstdint>
 #include <iterator>
@@ -530,7 +531,7 @@ void SelectionDAGISel::initializeAnalysisResults(
   // into account).  That's unfortunate but OK because it just means we won't
   // ask for passes that have been required anyway.
 
-  if (UseMBPI && RegisterPGOPasses)
+  if (UseMBPI && (RegisterPGOPasses || Fn.hasFnAttribute(YK_AUTO_OPTNONE_FNATTR)))
     FuncInfo->BPI = &FAM.getResult<BranchProbabilityAnalysis>(Fn);
   else
     FuncInfo->BPI = nullptr;
@@ -596,7 +597,7 @@ void SelectionDAGISel::initializeAnalysisResults(MachineFunctionPass &MFP) {
   // into account).  That's unfortunate but OK because it just means we won't
   // ask for passes that have been required anyway.
 
-  if (UseMBPI && RegisterPGOPasses)
+  if (UseMBPI && (RegisterPGOPasses || Fn.hasFnAttribute(YK_AUTO_OPTNONE_FNATTR)))
     FuncInfo->BPI =
         &MFP.getAnalysis<BranchProbabilityInfoWrapperPass>().getBPI();
   else

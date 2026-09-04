@@ -26,6 +26,7 @@
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Metadata.h"
 #include "llvm/IR/Module.h"
 #include "llvm/InitializePasses.h"
@@ -36,6 +37,11 @@
 #define DEBUG_TYPE "yk-basicblock-tracer-pass"
 
 const uint8_t ThreadTracingStateNone = 0;
+
+// Mark record branches as maximally cold to encourage the "normal" interpreter
+// to be optimised.
+constexpr uint32_t NotTracingBranchWeight = (1 << 20) - 1;
+constexpr uint32_t TracingBranchWeight = 1;
 
 using namespace llvm;
 
@@ -223,7 +229,9 @@ struct YkBasicBlockTracer : public ModulePass {
         // the recorder block if we are not tracing.
         Instruction *OldTerm = BB->getTerminator();
         Builder.SetInsertPoint(OldTerm);
-        Builder.CreateCondBr(DontRec, RestBB, RecBB);
+        MDNode *TracingWeights = MDBuilder(Context).createBranchWeights(
+            NotTracingBranchWeight, TracingBranchWeight);
+        Builder.CreateCondBr(DontRec, RestBB, RecBB, TracingWeights);
         OldTerm->eraseFromParent();
 
         // Attach metadata to the first instruction of each of the blocks so

@@ -1,8 +1,10 @@
 ; RUNNING TEST EXAMPLE: llvm-lit llvm/test/Transforms/Yk/BasicBlockTracer.ll
-; RUN: llc -stop-after yk-basicblock-tracer-pass --yk-basicblock-tracer < %s  | FileCheck %s
+; RUN: llc -stop-after yk-basicblock-tracer-pass --yk-basicblock-tracer < %s | FileCheck %s
+; RUN: llc -stop-after finalize-isel --yk-basicblock-tracer < %s | FileCheck --check-prefix=MIR %s
 
 ; CHECK: @__yk_thread_tracing_state = external thread_local(initialexec) global i8
 ; CHECK: @__yk_trace_buffer = external thread_local(initialexec) global { ptr, ptr }
+; CHECK: br i1 %{{.*}}, label %{{.*}}, label %{{.*}}, !prof [[TRACING_WEIGHTS:![0-9]+]]
 
 ; CHECK:  call preserve_allcc void @__yk_trace_basicblock(i32 0)
 define dso_local noundef i32 @main() #0 {
@@ -70,8 +72,19 @@ define dso_local noundef i32 @_Z5checki(i32 noundef %0) #1 {
 ; CHECK: store i32 %0, ptr
 ; CHECK: ret void
 
+; CHECK: [[TRACING_WEIGHTS]] = !{!"branch_weights", i32 1048575, i32 1}
+
+; MIR-LABEL: name: main
+; MIR-LABEL: name: weighted
+; MIR: successors: %bb.2(0x7ffff800), %bb.1(0x00000800)
+
+define void @weighted() #2 {
+  ret void
+}
+
 attributes #0 = { mustprogress noinline norecurse nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
 attributes #1 = { mustprogress noinline nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #2 = { noinline nounwind optnone "yk_autooptnone" }
 
 !llvm.module.flags = !{!0, !1, !2, !3, !4}
 !llvm.ident = !{!5}
