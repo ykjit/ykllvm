@@ -59,6 +59,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include <cassert>
 #include <cstddef>
 #include <iterator>
@@ -154,7 +155,8 @@ PreservedAnalyses BranchFolderPass::run(MachineFunction &MF,
 }
 
 bool BranchFolderLegacy::runOnMachineFunction(MachineFunction &MF) {
-  if (skipFunction(MF.getFunction()))
+  if (skipFunction(MF.getFunction()) &&
+      !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
 
   TargetPassConfig *PassConfig = &getAnalysis<TargetPassConfig>();
