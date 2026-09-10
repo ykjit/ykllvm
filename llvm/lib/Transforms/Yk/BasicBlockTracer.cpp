@@ -20,9 +20,12 @@
 //===-------------------------------------------------------------------===//
 //
 #include "llvm/Transforms/Yk/BasicBlockTracer.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instruction.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/LLVMContext.h"
@@ -63,6 +66,34 @@ GlobalVariable *getOrCreateThreadTracingState(Module &M) {
 } // namespace llvm
 
 namespace {
+// Return true if executing BB can make tracing diverge. In other words, return
+// true if we can't statically calculate `BB`'s successor.
+bool tracingMayDivergeAt(BasicBlock &BB) {
+  return llvm::any_of(BB, [](Instruction &I) {
+    // If `I` is not a call, it can't make tracing diverge.
+    auto *Call = dyn_cast<CallBase>(&I);
+    if (Call == nullptr)
+      return false;
+    Function *Callee = Call->getCalledFunction();
+    // If the callee is an intrinsic or an arbitrary function we
+    // (ultra-conservatively) say that it might cause tracing to diverge.
+    if (Callee == nullptr || !Callee->isIntrinsic())
+      return true;
+    // If the intrinsic is anything other than
+    // llvm.experimental.patchpoint.void, tracing cannot diverge.
+    return Callee->getName() == CP_PPNAME;
+  });
+}
+
+// Return true if `BB` needs to have a trace recorder block added.
+bool needsRecord(BasicBlock &BB, DominatorTree &DT) {
+  BasicBlock *Pred = BB.getUniquePredecessor();
+  auto *Branch =
+      Pred == nullptr ? nullptr : dyn_cast<BranchInst>(Pred->getTerminator());
+  return Branch == nullptr || !Branch->isUnconditional() ||
+         tracingMayDivergeAt(*Pred) || DT.dominates(&BB, Pred);
+}
+
 struct YkBasicBlockTracer : public ModulePass {
   static char ID;
 
@@ -153,19 +184,28 @@ struct YkBasicBlockTracer : public ModulePass {
     for (auto &F : M) {
       // If we won't ever trace this, don't insert calls to the tracer, as it
       // would only slow us down.
-      if ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) && (!containsControlPoint(F))) {
+      if (F.empty() || ((F.hasFnAttribute(YK_OUTLINE_FNATTR)) &&
+                        (!containsControlPoint(F)))) {
         FunctionIndex++;
         continue;
       }
 
-      // Collect *original* blocks that require instrumentation.
-      std::vector<BasicBlock *> BBs;
+      // Decide which original blocks need records before changing the CFG.
+      DominatorTree DT(F);
+      const bool CallsAReturnTwice = F.callsFunctionThatReturnsTwice();
+      std::vector<std::pair<BasicBlock *, bool>> BBs;
       for (auto &BB : F) {
-        BBs.push_back(&BB);
+        BBs.emplace_back(&BB, CallsAReturnTwice || needsRecord(BB, DT));
       }
 
       uint32_t BlockIndex = 0;
-      for (BasicBlock *BB : BBs) {
+      for (auto [BB, NeedsRecord] : BBs) {
+        if (!NeedsRecord) {
+          BB->front().setMetadata("yk-swt-bb-purpose", SerialiseBBMD);
+          BlockIndex++;
+          continue;
+        }
+
         // If there are allocas in an entry block, then they have to stay
         // there, otherwise stackmaps will consider the frame to have dynamic
         // size (and we won't know how big the frame is at runtime).

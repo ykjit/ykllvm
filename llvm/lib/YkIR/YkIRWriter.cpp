@@ -351,6 +351,10 @@ struct BBCacheEntry {
   size_t BBIdx;
   // The BBPurposeSerialiseBB LLVM IR block that this entry corresponds with.
   BasicBlock *SerBB;
+  // Whether this AOT IR block will record its existence in the tracer: if
+  // false, it must be possible to accurately infer this block's existence
+  // statically from the preceding path.
+  bool Records;
 };
 
 // An entry in the function cache.
@@ -1781,6 +1785,7 @@ private:
   void serialiseBlock(BasicBlock &BB, FuncLowerCtxt &FLCtxt, unsigned &BBIdx,
                       Function &F, std::vector<AllocaInst *> *EntryAllocas,
                       std::vector<PHINode *> *PhiNodes) {
+    OutStreamer.emitInt8(BBCache.at(&BB).Records);
     // Check if this is a promote-check block (from ConditionalPromoteCalls).
     // For these blocks, skip all contents and emit only an unconditional branch
     // to the DoPromoteBB, because during tracing we always take the promote
@@ -2323,36 +2328,25 @@ public:
       size_t BBIdx = 0;
       // Only make block cache entries for functions that can be traced.
       if ((!F.hasFnAttribute(YK_OUTLINE_FNATTR)) || (containsControlPoint(F))) {
-        // The expected purpose of the next block.
-        BBPurpose Expect = BBPurposeTracingCheck;
-        std::optional<BasicBlock *> TracingCheckBB;
-        std::optional<BasicBlock *> RecordBB;
-        for (BasicBlock &BB : F) {
-          BBPurpose BP = getBBPurpose(&BB);
-          assert(BP == Expect);
-          switch (BP) {
-          case BBPurposeTracingCheck:
-            assert(!TracingCheckBB.has_value());
-            TracingCheckBB = &BB;
-            Expect = BBPurposeRecord;
-            break;
-          case BBPurposeRecord:
-            assert(!RecordBB.has_value());
-            RecordBB = &BB;
-            Expect = BBPurposeSerialise;
-            break;
-          case BBPurposeSerialise:
-            BBCache[TracingCheckBB.value()] =
-                BBCacheEntry{BBPurposeTracingCheck, BBIdx, &BB};
-            BBCache[RecordBB.value()] =
-                BBCacheEntry{BBPurposeRecord, BBIdx, &BB};
-            BBCache[&BB] = BBCacheEntry{BBPurposeSerialise, BBIdx, &BB};
-            Expect = BBPurposeTracingCheck;
-            TracingCheckBB = nullopt;
-            RecordBB = nullopt;
-            BBIdx++;
-            break;
+        for (auto It = F.begin(); It != F.end();) {
+          BasicBlock *TracingCheck = nullptr;
+          BasicBlock *Record = nullptr;
+          BasicBlock *Serialise = &*It++;
+          if (getBBPurpose(Serialise) != BBPurposeSerialise) {
+            TracingCheck = Serialise;
+            assert(getBBPurpose(TracingCheck) == BBPurposeTracingCheck &&
+                   It != F.end());
+            Record = &*It++;
+            assert(getBBPurpose(Record) == BBPurposeRecord && It != F.end());
+            Serialise = &*It++;
+            assert(getBBPurpose(Serialise) == BBPurposeSerialise);
+            BBCache[TracingCheck] =
+                BBCacheEntry{BBPurposeTracingCheck, BBIdx, Serialise, true};
+            BBCache[Record] =
+                BBCacheEntry{BBPurposeRecord, BBIdx, Serialise, true};
           }
+          BBCache[Serialise] = BBCacheEntry{BBPurposeSerialise, BBIdx++,
+                                            Serialise, TracingCheck != nullptr};
         }
       }
       FunctionCache[&F] = {FuncIdx++, BBIdx};
