@@ -38,7 +38,8 @@ define dso_local noundef i32 @main() #0 {
 12:                                               ; preds = %7
   br label %13
 
-; CHECK:  call preserve_allcc void @__yk_trace_basicblock(i32 5)
+; Block 5 is implied by block 4's unconditional successor.
+; CHECK-NOT: call preserve_allcc void @__yk_trace_basicblock(i32 5)
 13:                                               ; preds = %12
   %14 = load i32, i32* %3, align 4
   %15 = add nsw i32 %14, 1
