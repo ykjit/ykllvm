@@ -25,6 +25,7 @@
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Endian.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Transforms/Yk/ConditionalPromoteCalls.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
@@ -2101,6 +2102,22 @@ private:
     OutStreamer.emitSizeT(typeIndex(PV->getType()));
   }
 
+  void serialiseUndefValue(UndefValue *UV) {
+    // `Const` discriminator:
+    OutStreamer.emitInt8(ConstKindVal);
+    // ty_idx:
+    OutStreamer.emitSizeT(typeIndex(UV->getType()));
+    // num_bytes + bytes filled with the 0xdeadbeef marker pattern, so that an
+    // accidental use of an undefined value is easier to spot at runtime.
+    unsigned ByteWidth = DL.getTypeStoreSize(UV->getType());
+    uint8_t DeadBeef[4];
+    llvm::support::endian::write32le(DeadBeef, 0xdeadbeef);
+    OutStreamer.emitSizeT(ByteWidth);
+    for (unsigned I = 0; I < ByteWidth; I++) {
+      OutStreamer.emitInt8(DeadBeef[I % 4]);
+    }
+  }
+
   void serialiseConstantInt(ConstantInt *CI) {
     // `Const` discriminator:
     OutStreamer.emitInt8(ConstKindVal);
@@ -2230,6 +2247,8 @@ private:
       serialiseConstantFP(CFP);
     } else if (GlobalVariable *GV = dyn_cast<GlobalVariable>(C)) {
       serialiseGlobalConstant(GV);
+    } else if (UndefValue *UV = dyn_cast<UndefValue>(C)) {
+      serialiseUndefValue(UV);
     } else {
       serialiseUnimplementedConstant(C);
     }
