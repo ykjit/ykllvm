@@ -2213,8 +2213,14 @@ private:
   }
 
   void serialiseConstantFP(ConstantFP *CFP) {
-    // For simplicity, for now we store all constant float values as doubles.
-    if ((CFP->getType()->isFloatTy()) || (CFP->getType()->isDoubleTy())) {
+    if (CFP->getType()->isFloatTy()) {
+      OutStreamer.emitInt8(ConstKindVal);
+      OutStreamer.emitSizeT(typeIndex(CFP->getType()));
+      OutStreamer.emitSizeT(sizeof(float));
+      float Value = CFP->getValueAPF().convertToFloat();
+      OutStreamer.emitBinaryData(
+          {reinterpret_cast<const char *>(&Value), sizeof(float)});
+    } else if (CFP->getType()->isDoubleTy()) {
       OutStreamer.emitInt8(ConstKindVal);
       OutStreamer.emitSizeT(typeIndex(CFP->getType()));
       OutStreamer.emitSizeT(sizeof(double));
