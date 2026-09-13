@@ -51,7 +51,8 @@ define dso_local noundef i32 @main() #0 {
   store i32 0, i32* %1, align 4
   br label %17
 
-; CHECK:  call preserve_allcc void @__yk_trace_basicblock(i32 7)
+; Return blocks must remain recorded so that trace termination is observable.
+; CHECK: call preserve_allcc void @__yk_trace_basicblock(i32 7)
 17:                                               ; preds = %16, %10
   %18 = load i32, i32* %1, align 4
   ret i32 %18
