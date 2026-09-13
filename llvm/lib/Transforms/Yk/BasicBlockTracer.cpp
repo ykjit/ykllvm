@@ -22,6 +22,7 @@
 #include "llvm/Transforms/Yk/BasicBlockTracer.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/CFG.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -87,11 +88,13 @@ bool tracingMayDivergeAt(BasicBlock &BB) {
 
 // Return true if `BB` needs to have a trace recorder block added.
 bool needsRecord(BasicBlock &BB, DominatorTree &DT) {
-  BasicBlock *Pred = BB.getUniquePredecessor();
-  auto *Branch =
-      Pred == nullptr ? nullptr : dyn_cast<BranchInst>(Pred->getTerminator());
-  return Branch == nullptr || !Branch->isUnconditional() ||
-         tracingMayDivergeAt(*Pred) || DT.dominates(&BB, Pred);
+  if (pred_empty(&BB) || isa<ReturnInst>(BB.getTerminator()))
+    return true;
+  return llvm::any_of(predecessors(&BB), [&](BasicBlock *Pred) {
+    auto *Branch = dyn_cast<BranchInst>(Pred->getTerminator());
+    return Branch == nullptr || !Branch->isUnconditional() ||
+           tracingMayDivergeAt(*Pred) || DT.dominates(&BB, Pred);
+  });
 }
 
 struct YkBasicBlockTracer : public ModulePass {
