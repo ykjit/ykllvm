@@ -935,8 +935,10 @@ private:
       // - `nounwind` has no consequences for us at the moment.
       // - `returnstwice` can be ignored.
       // - `willreturn` function returns or has UB.
+      // - `alwaysinline` is an inliner hint.
       if (Attr.isEnumAttribute() &&
           ((Attr.getKindAsEnum() == Attribute::Cold) ||
+           (Attr.getKindAsEnum() == Attribute::AlwaysInline) ||
            (Attr.getKindAsEnum() == Attribute::OptimizeForSize) ||
            (Attr.getKindAsEnum() == Attribute::NoReturn) ||
            (Attr.getKindAsEnum() == Attribute::NoUnwind) ||
