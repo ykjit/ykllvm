@@ -37,6 +37,7 @@
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "llvm/Transforms/Yk/BasicBlockTracer.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
+#include "llvm/Transforms/Yk/Idempotent.h"
 #include "llvm/YkIR/YkIRWriter.h"
 
 #define DEBUG_TYPE "yk-module-clone-pass"
@@ -129,11 +130,23 @@ void ModuleClonePass::removePromotion(CallBase *CB) {
   CI->eraseFromParent();
 }
 
+void ModuleClonePass::removeIdemLoad(CallBase *CB) {
+  CallInst *CI = cast<CallInst>(CB);
+  assert(CI->arg_size() >= 1);
+  Value *Ptr = CI->getArgOperand(0);
+  assert(Ptr->getType()->isPointerTy());
+  IRBuilder<> Builder(CI);
+  Value *Loaded = Builder.CreateAlignedLoad(CI->getType(), Ptr, Align(1));
+  CI->replaceAllUsesWith(Loaded);
+  CI->eraseFromParent();
+}
+
 void ModuleClonePass::removePromotionsAndDebugStrings(Function *F) {
   // We have to do this in two phases to avoid iterator invalidation.
   //
   // 1. Find instructions to remove.
   std::vector<CallInst *> Promotions;
+  std::vector<CallInst *> IdemLoads;
   std::vector<CallInst *> DebugStrs;
   for (BasicBlock &BB : *F) {
     for (Instruction &I : BB) {
@@ -141,6 +154,8 @@ void ModuleClonePass::removePromotionsAndDebugStrings(Function *F) {
         if (Function *CF = CB->getCalledFunction()) {
           if (CF->getName().starts_with(YK_PROMOTE_PREFIX)) {
             Promotions.push_back(cast<CallInst>(CB));
+          } else if (CF->getName().starts_with(YK_IDEMPOTENT_LOAD_PREFIX)) {
+            IdemLoads.push_back(cast<CallInst>(CB));
           } else if (CF->getName() == YK_DEBUG_STR) {
             DebugStrs.push_back(cast<CallInst>(CB));
           }
@@ -151,6 +166,9 @@ void ModuleClonePass::removePromotionsAndDebugStrings(Function *F) {
   // 2. Remove instructions.
   for (CallInst *P : Promotions) {
     removePromotion(P);
+  }
+  for (CallInst *P : IdemLoads) {
+    removeIdemLoad(P);
   }
   for (CallInst *D : DebugStrs) {
     D->eraseFromParent();
