@@ -1941,13 +1941,15 @@ private:
         if (CallBase *CI = dyn_cast<CallBase>(&I)) {
           Function *CF = CI->getCalledFunction();
           if (CF != nullptr) {
-            if (CF->getName().starts_with(YK_PROMOTE_PREFIX)) {
+            if (CF->getName().starts_with(YK_PROMOTE_PREFIX) ||
+                CF->getName().starts_with(YK_IDEMPOTENT_LOAD_PREFIX)) {
               // You can't use yk_promote() in an yk_outline function, as we
               // won't have any IR for the function and thus won't be able to
               // "skip over" those promotions in the trace builder.
               F.getContext().emitError(
-                  Twine("promotion detected in ") + YK_OUTLINE_FNATTR +
-                  " annotated function '" + F.getName() + "'\n");
+                  Twine("promotion/idempotent_load detected in ") +
+                  YK_OUTLINE_FNATTR + " annotated function '" + F.getName() +
+                  "'\n");
             }
             if (CF->getName() == YK_DEBUG_STR) {
               // Same for debug strings. How would the trace builder skip them?
