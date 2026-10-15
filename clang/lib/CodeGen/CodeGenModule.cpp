@@ -77,7 +77,6 @@
 #include "llvm/TargetParser/X86TargetParser.h"
 #include "llvm/Transforms/Instrumentation/KCFI.h"
 #include "llvm/Transforms/Utils/BuildLibCalls.h"
-#include "llvm/Transforms/Yk/Idempotent.h"
 #include "llvm/YkIR/YkIRWriter.h"
 #include <optional>
 #include <set>
@@ -2941,12 +2940,6 @@ void CodeGenModule::SetLLVMFunctionAttributesForDefinition(const Decl *D,
   if (D->hasAttr<YkOutlineAttr>()) {
     B.addAttribute(llvm::Attribute::NoInline);
     B.addAttribute(YK_OUTLINE_FNATTR);
-  }
-
-  if (D->hasAttr<YkIdempotentAttr>()) {
-    B.addAttribute(llvm::Attribute::NoInline);
-    B.addAttribute(YK_OUTLINE_FNATTR);
-    B.addAttribute(YK_IDEMPOTENT_FNATTR);
   }
 
   if (D->hasAttr<YkIndirectInlineAttr>()) {
