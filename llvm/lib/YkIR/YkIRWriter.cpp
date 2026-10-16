@@ -118,6 +118,7 @@ enum OpCode {
   OpCodeDebugStr,
   OpCodeExtractValue,
   OpCodeFreeze,
+  OpCodePromoteCodeId,
   OpCodeUnimplemented = 255, // YKFIXME: Will eventually be deleted.
 };
 
@@ -762,7 +763,9 @@ private:
                           unsigned &InstIdx) {
     assert(I->arg_size() == 1);
     // opcode:
-    serialiseOpcode(OpCodePromote);
+    serialiseOpcode(I->getCalledFunction()->getName() == "__yk_promote_code_id"
+                        ? OpCodePromoteCodeId
+                        : OpCodePromote);
 
     // type_idx:
     OutStreamer.emitSizeT(typeIndex(I->getOperand(0)->getType()));
