@@ -64,6 +64,8 @@
 #include "llvm/Support/raw_ostream.h"
 using namespace llvm;
 
+extern bool YkStackMapAdditionalLocs;
+
 #define FIXUPBW_DESC "X86 Byte/Word Instruction Fixup"
 #define FIXUPBW_NAME "x86-fixup-bw-insts"
 
@@ -286,6 +288,13 @@ Register X86FixupBWInstImpl::getSuperRegDestIfDead(MachineInstr *OrigMI) const {
 
 MachineInstr *X86FixupBWInstImpl::tryReplaceLoad(unsigned New32BitOpcode,
                                                  MachineInstr *MI) const {
+  // The stackmap additional locations analysis only recognises plain
+  // reloads. Widening one to a zero-extending load would hide it, so the spill
+  // slot wouldn't be written on deopt.
+  int FI;
+  if (YkStackMapAdditionalLocs && TII->isLoadFromStackSlotPostFE(*MI, FI))
+    return nullptr;
+
   // We are going to try to rewrite this load to a larger zero-extending
   // load.  This is safe if all portions of the 32 bit super-register
   // of the original destination register, except for the original destination
