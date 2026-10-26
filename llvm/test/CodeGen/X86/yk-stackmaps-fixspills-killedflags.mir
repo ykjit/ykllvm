@@ -1,8 +1,10 @@
 # RUN: llc -mtriple=x86_64-- -stop-after fix-stackmaps-spill-reloads --yk-insert-stackmaps --yk-stackmap-spillreloads-fix %s -o - | FileCheck %s
 
 # Check that we properly recompute register liveness flags after moving around
-# stackmap instructions in the `FixStackmapsSpillReloads` pass.
-# A scenario where this can happen is the following:
+# stackmap instructions in the `FixStackmapsSpillReloads` pass. This happens
+# in several places:
+#
+# 1. Kills:
 #
 #   CALL @foo
 #   mov rax, killed rcx
@@ -18,18 +20,18 @@
 # the stackmap operands. To avoid this, the pass now runs the
 # `recomputeLivenessFlags` function on any machine block we've changed.
 #
-# We also check that `implicit kill`s are removed from stackmaps, when they are
-# no longer valid.
+# 2. Check that "implicit kill"s are removed from stackmaps, when they are no
+# longer valid.
 #
-# Lastly, we check that loads from the stack that aren't actual spills, are
-# replaced with the constant `0xdead` (57005).
+# 3. Incoming argument reloads must become indirect locations.
 
 # CHECK-LABEL: bb.0:
 # CHECK-LABEL: STACKMAP 1, 0, $rcx, 3, 3
 # CHECK-NEXT: $rax = MOV64rr killed $rcx
 # CHECK-LABEL: STACKMAP 2, 0, $rdx, 3
 # CHECK-NEXT: dead $rbx = MOV64rr killed $rdx
-# CHECK-LABEL: STACKMAP 3, 0, 2, 57005, 3, 3
+# CHECK-LABEL: STACKMAP 3, 0, 1, 4, $rbp, 16, 3, 3
+# CHECK-NEXT: $r10d = MOV32rm $rbp, 1, $noreg, 16, $noreg
 
 name: main
 tracksRegLiveness: true
