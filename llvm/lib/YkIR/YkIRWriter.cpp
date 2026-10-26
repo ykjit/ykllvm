@@ -856,13 +856,14 @@ private:
     AttributeList Attrs = I->getAttributes();
     for (unsigned AI = 0; AI < I->arg_size(); AI++) {
       for (auto &Attr : Attrs.getParamAttrs(AI)) {
-        // `nonull`, `noundef`, `nounwind` and `dereferencable` are used a lot.
-        // I think for our purposes they can be safely ignored.
+        // These attributes help optimisers but currently yk doesn't know
+        // anything about them: they can safely be ignored.
         if (((Attr.getKindAsEnum() == Attribute::NonNull) ||
              (Attr.getKindAsEnum() == Attribute::NoUndef) ||
              (Attr.getKindAsEnum() == Attribute::NoUnwind) ||
              (Attr.getKindAsEnum() == Attribute::Dereferenceable) ||
              (Attr.getKindAsEnum() == Attribute::Range) ||
+             (Attr.getKindAsEnum() == Attribute::ReadNone) ||
              (Attr.getKindAsEnum() == Attribute::ReadOnly))) {
           continue;
         }
