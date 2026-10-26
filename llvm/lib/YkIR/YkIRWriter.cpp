@@ -856,13 +856,14 @@ private:
     AttributeList Attrs = I->getAttributes();
     for (unsigned AI = 0; AI < I->arg_size(); AI++) {
       for (auto &Attr : Attrs.getParamAttrs(AI)) {
-        // `nonull`, `noundef`, `nounwind` and `dereferencable` are used a lot.
-        // I think for our purposes they can be safely ignored.
+        // These attributes help optimisers but currently yk doesn't know
+        // anything about them: they can safely be ignored.
         if (((Attr.getKindAsEnum() == Attribute::NonNull) ||
              (Attr.getKindAsEnum() == Attribute::NoUndef) ||
              (Attr.getKindAsEnum() == Attribute::NoUnwind) ||
              (Attr.getKindAsEnum() == Attribute::Dereferenceable) ||
              (Attr.getKindAsEnum() == Attribute::Range) ||
+             (Attr.getKindAsEnum() == Attribute::ReadNone) ||
              (Attr.getKindAsEnum() == Attribute::ReadOnly))) {
           continue;
         }
@@ -1130,7 +1131,6 @@ private:
     // We don't yet support:
     //  - some atomic loads
     //  - loads from exotic address spaces
-    //  - potentially misaligned loads
     //
     // FIXME: About misaligned loads, when a load is aligned `N`, this is a hard
     // guarantee to the code generator that at runtime, the pointer is aligned
@@ -1149,8 +1149,8 @@ private:
     // architectures or alignments we need to pass the alignment and whether or
     // not this is an atomic through to the codegen so it can be handled there
     // correctly.
-    if ((I->getOrdering() != AtomicOrdering::NotAtomic) &&
-        (DL.getTypeAllocSize(I->getType()) + (I->getAlign().value() % 8) > 8)) {
+    if ((I->getOrdering() != AtomicOrdering::NotAtomic) ||
+        (I->getPointerAddressSpace() != 0)) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
       return;
     }
@@ -1177,14 +1177,11 @@ private:
     // We don't yet support:
     //  - atomic store
     //  - stores into exotic address spaces
-    //  - potentially misaligned stores
     //
     // See the comment in `serialiseLoadInst()` for context on misaligned memory
     // accesses.
     if ((I->getOrdering() != AtomicOrdering::NotAtomic) ||
-        (I->getPointerAddressSpace() != 0) ||
-        (I->getAlign() <
-         DL.getTypeAllocSize(I->getValueOperand()->getType()))) {
+        (I->getPointerAddressSpace() != 0)) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
       return;
     }
