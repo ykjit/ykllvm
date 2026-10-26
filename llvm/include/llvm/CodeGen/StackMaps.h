@@ -107,6 +107,7 @@ public:
   // Stores callee-saved register info.
   struct CSR {
     int Reg = 0;
+    // Offset from the frame register in bytes.
     int Offset = 0;
   };
 

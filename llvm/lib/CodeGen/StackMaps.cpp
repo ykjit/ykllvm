@@ -658,15 +658,20 @@ void StackMaps::recordStackMapOpers(const MCSymbol &MILabel,
     CurrentIt->second.RecordCount++;
   } else {
     // Collect callee-saved-register spills.
+    const TargetFrameLowering *TFL = AP.MF->getSubtarget().getFrameLowering();
     CSRVec CSRInfo;
-    std::vector<CalleeSavedInfo> CSI = MFI.getCalleeSavedInfo();
-    for (auto cs : CSI) {
-      int dwreg = getDwarfRegNum(cs.getReg(), TRI);
-      CSR Entry = {dwreg, cs.getFrameIdx()};
-      CSRInfo.push_back(Entry);
+    if (YkStackMapAdditionalLocs) {
+      for (const auto &CS : MFI.getCalleeSavedInfo()) {
+        int DwarfReg = getDwarfRegNum(CS.getReg(), TRI);
+        Register FrameReg;
+        int64_t Offset =
+            TFL->getFrameIndexReference(*AP.MF, CS.getFrameIdx(), FrameReg)
+                .getFixed();
+        assert(isInt<32>(Offset) && "callee-saved register offset is too large");
+        CSRInfo.push_back({DwarfReg, static_cast<int32_t>(Offset)});
+      }
     }
     // Check whether this function pushed a frame pointer.
-    const TargetFrameLowering *TFL = AP.MF->getSubtarget().getFrameLowering();
     bool HasFramePointer = TFL->hasFP(*(AP.MF));
     FnInfos.insert(std::make_pair(
         AP.CurrentFnSym, FunctionInfo(FrameSize, HasFramePointer, CSRInfo)));
