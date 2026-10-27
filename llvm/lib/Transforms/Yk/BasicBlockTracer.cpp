@@ -35,6 +35,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/Yk.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
 #include "llvm/YkIR/YkIRWriter.h"
 

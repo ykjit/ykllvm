@@ -1,6 +1,12 @@
 #ifndef __LLVM_SUPPORT_YK_H
 #define __LLVM_SUPPORT_YK_H
 
+// The name of the thread tracing state thread local.
+#define YK_THREAD_TRACING_STATE_TL "__yk_thread_tracing_state"
+
+/// The name of the "are we interpreting or tracing?" function.
+#define YK_IS_INTERPRETING "yk_is_interpreting"
+
 namespace llvm {
 void initYkOptions(void);
 } // namespace llvm
