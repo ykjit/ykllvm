@@ -39,6 +39,7 @@
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/Yk.h"
 #include "llvm/Target/TargetOptions.h"
 using namespace llvm;
 
@@ -3264,6 +3265,11 @@ bool X86FastISel::fastLowerCall(CallLoweringInfo &CLI) {
   // Can't handle import call optimization.
   if (Is64Bit &&
       MF->getFunction().getParent()->getModuleFlag("import-call-optimization"))
+    return false;
+
+  // Allow SelectionDAG to handle yk_is_interpreting.
+  if (const auto *F = dyn_cast_or_null<Function>(Callee);
+      Is64Bit && F && F->getName() == YK_IS_INTERPRETING)
     return false;
 
   SmallVector<MVT, 16> OutVTs;

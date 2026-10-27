@@ -10,9 +10,6 @@
 // `{ u32 *cursor; u32 *end; }`.
 #define YK_TRACE_BUFFER_TL "__yk_trace_buffer"
 
-// The name of the thread tracing state thread local.
-#define YK_THREAD_TRACING_STATE_TL "__yk_thread_tracing_state"
-
 // The name of the dummy (noop) trace function - used in multi-module swt
 // tracing.
 #define YK_TRACE_FUNCTION_DUMMY "__yk_trace_basicblock_dummy"
