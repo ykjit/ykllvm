@@ -255,23 +255,25 @@ StackMaps::parseOperand(MachineInstr::const_mop_iterator MOI,
       assert(Size > 0 && "Need a valid size for indirect memory locations.");
       Register Reg = (++MOI)->getReg();
       int64_t Imm = (++MOI)->getImm();
-      // Check if a copy of this indirect location exists in a register. If so
-      // track the register instead.
-      std::set<int64_t> Others = SpillOffsets.getOthersInSet(Imm);
-      for (const int64_t &L: Others) {
-        if (L > 0) {
-          // It's a register, use that.
-          //
-          // Take a copy to avoid iterator invalidation!
-          std::set<int64_t> Extras = Others;
-          Extras.erase(L);
-          Extras.insert(Imm);
-          Locs.emplace_back(Location::Register, Size, L, 0, Extras);
-          return ++MOI;
+      unsigned DwarfRegNum = getDwarfRegNum(Reg, TRI);
+      // We have to be careful about packing things into `extras`: the offsets
+      // need to be from the frame register.
+      if (Reg == TRI->getFrameRegister(*AP.MF)) {
+        std::set<int64_t> Others = SpillOffsets.getOthersInSet(Imm);
+        for (const int64_t &L : Others) {
+          if (L > 0) {
+            // We've found a register so make this a main entry. At worst this
+            // will swap out an existing register; at best it will replace an
+            // `Indirect` with a register.
+            std::set<int64_t> Extras = Others;
+            Extras.erase(L);
+            Extras.insert(Imm);
+            Locs.emplace_back(Location::Register, Size, L, 0, Extras);
+            return ++MOI;
+          }
         }
       }
-      Locs.emplace_back(StackMaps::Location::Indirect, Size,
-                        getDwarfRegNum(Reg, TRI), Imm);
+      Locs.emplace_back(StackMaps::Location::Indirect, Size, DwarfRegNum, Imm);
       break;
     }
     case StackMaps::ConstantOp: {
