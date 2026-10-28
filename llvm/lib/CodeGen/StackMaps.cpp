@@ -262,7 +262,7 @@ StackMaps::parseOperand(MachineInstr::const_mop_iterator MOI,
         std::set<int64_t> Others =
             SpillOffsets.getOthersInSet(encodeSpillOffset(Imm));
         for (const int64_t &L : Others) {
-          if (L > 0 && L < NonNegativeFrameOffsetTag) {
+          if (L >= 0 && L < NonNegativeFrameOffsetTag) {
             // We've found a register so make this a main entry. At worst this
             // will swap out an existing register; at best it will replace an
             // `Indirect` with a register.

@@ -1,0 +1,27 @@
+# RUN: llc -mtriple=x86_64-- --yk-stackmap-add-locs %s -o - | FileCheck %s
+
+# RAX is DWARF register zero. It can be the primary location for a stack slot
+# just like any other register, with the stack copy retained as an extra.
+# CHECK-LABEL: .quad 42
+# CHECK: .byte 1
+# CHECK-NEXT: .byte 1
+# CHECK-NEXT: .byte 0
+# CHECK-NEXT: .short 8
+# CHECK-NEXT: .short 0
+# CHECK-NEXT: .short 0
+# CHECK-NEXT: .short 1
+# CHECK-NEXT: .short -16
+# CHECK-NEXT: .long 0
+---
+name: rax_alias
+tracksRegLiveness: true
+frameInfo:
+  hasStackMap: true
+stack:
+  - { id: 0, type: spill-slot, offset: -16, size: 8, alignment: 8 }
+body: |
+  bb.0:
+    $rbp = frame-setup MOV64rr $rsp
+    $rax = MOV64rm $rbp, 1, $noreg, -16, $noreg :: (load (s64) from %stack.0)
+    STACKMAP 42, 0, 1, 8, $rbp, -16, 3
+    RET64 $rax
