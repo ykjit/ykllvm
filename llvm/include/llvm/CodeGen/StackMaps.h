@@ -84,9 +84,9 @@ public:
     uint16_t Reg = 0;
     int32_t Offset = 0;
 
-    /// Additional locations for this live variable. Positive values are
-    /// registers in Dwarf notation. Negative values are offsets relative to
-    /// RBP.
+    /// Additional locations for this live variable. Non-negative values below
+    /// NonNegativeFrameOffsetTag are DWARF register numbers; negative values are
+    /// offsets relative to the target's frame register.
     std::set<int64_t> Extras;
 
     Location() = default;
@@ -120,6 +120,12 @@ public:
     ConstantOp,
     NextLive
   };
+
+  // Determine when non-negative offsets need to become `Indirect` locations.
+  static constexpr int64_t NonNegativeFrameOffsetTag = int64_t(1) << 32;
+  static int64_t encodeSpillOffset(int64_t Offset) {
+    return Offset >= 0 ? NonNegativeFrameOffsetTag + Offset : Offset;
+  }
 
   StackMaps(AsmPrinter &AP);
 

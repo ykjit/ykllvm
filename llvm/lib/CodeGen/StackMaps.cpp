@@ -255,23 +255,26 @@ StackMaps::parseOperand(MachineInstr::const_mop_iterator MOI,
       assert(Size > 0 && "Need a valid size for indirect memory locations.");
       Register Reg = (++MOI)->getReg();
       int64_t Imm = (++MOI)->getImm();
-      // Check if a copy of this indirect location exists in a register. If so
-      // track the register instead.
-      std::set<int64_t> Others = SpillOffsets.getOthersInSet(Imm);
-      for (const int64_t &L: Others) {
-        if (L > 0) {
-          // It's a register, use that.
-          //
-          // Take a copy to avoid iterator invalidation!
-          std::set<int64_t> Extras = Others;
-          Extras.erase(L);
-          Extras.insert(Imm);
-          Locs.emplace_back(Location::Register, Size, L, 0, Extras);
-          return ++MOI;
+      unsigned DwarfRegNum = getDwarfRegNum(Reg, TRI);
+      // We have to be careful about packing things into `extras`: the offsets
+      // need to be from the frame register.
+      if (Reg == TRI->getFrameRegister(*AP.MF)) {
+        std::set<int64_t> Others =
+            SpillOffsets.getOthersInSet(encodeSpillOffset(Imm));
+        for (const int64_t &L : Others) {
+          if (L >= 0 && L < NonNegativeFrameOffsetTag) {
+            // We've found a register so make this a main entry. At worst this
+            // will swap out an existing register; at best it will replace an
+            // `Indirect` with a register.
+            std::set<int64_t> Extras = Others;
+            Extras.erase(L);
+            Extras.insert(encodeSpillOffset(Imm));
+            Locs.emplace_back(Location::Register, Size, L, 0, Extras);
+            return ++MOI;
+          }
         }
       }
-      Locs.emplace_back(StackMaps::Location::Indirect, Size,
-                        getDwarfRegNum(Reg, TRI), Imm);
+      Locs.emplace_back(StackMaps::Location::Indirect, Size, DwarfRegNum, Imm);
       break;
     }
     case StackMaps::ConstantOp: {
@@ -637,6 +640,22 @@ void StackMaps::recordStackMapOpers(const MCSymbol &MILabel,
     LiveVars.pop_back();
   }
 
+  // The compact register Extras encoding cannot represent non-negative
+  // frame-relative offsets: emit full locations for the same live value instead.
+  for (auto &Locations : LiveVars) {
+    LocationVec StackLocations;
+    for (auto &Loc : Locations) {
+      auto First = Loc.Extras.lower_bound(NonNegativeFrameOffsetTag);
+      for (auto It = First; It != Loc.Extras.end(); ++It)
+        StackLocations.emplace_back(
+            Location::Indirect, Loc.Size,
+            getDwarfRegNum(TRI->getFrameRegister(*AP.MF), TRI),
+            *It - NonNegativeFrameOffsetTag);
+      Loc.Extras.erase(First, Loc.Extras.end());
+    }
+    Locations.append(StackLocations.begin(), StackLocations.end());
+  }
+
   // Create an expression to calculate the offset of the callsite from function
   // entry.
   const MCExpr *CSOffsetExpr = MCBinaryExpr::createSub(
@@ -707,9 +726,8 @@ void StackMaps::recordPatchPoint(
   if (opers.isAnyReg()) {
     unsigned NArgs = opers.getNumCallArgs();
     for (unsigned i = 0, e = (opers.hasDef() ? NArgs + 1 : NArgs); i != e; ++i) {
-      for (auto &Loc : LiveVars[i]) {
-        assert(Loc.Type == Location::Register && "anyreg arg must be in reg.");
-      }
+      assert(LiveVars[i].front().Type == Location::Register &&
+             "anyreg arg must be in reg.");
     }
   }
 #endif

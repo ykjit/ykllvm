@@ -1,0 +1,39 @@
+# RUN: llc -mtriple=x86_64-- --yk-stackmap-add-locs %s -o - | FileCheck %s
+
+# Check that stackmaps don't incorrectly reference the wrong register in "extras".
+#
+# CHECK-LABEL: .quad 40
+# CHECK: .byte 1
+# CHECK-NEXT: .byte 1
+# CHECK-NEXT: .byte 0
+# CHECK-NEXT: .short 8
+# CHECK-NEXT: .short 12
+# CHECK-NEXT: .short 0
+# CHECK-NEXT: .short 1
+# CHECK-NEXT: .short -16
+# CHECK-NEXT: .long 0
+# CHECK-LABEL: .quad 41
+# CHECK: .byte 1
+# CHECK-NEXT: .byte 3
+# CHECK-NEXT: .byte 0
+# CHECK-NEXT: .short 8
+# CHECK-NEXT: .short 7
+# CHECK-NEXT: .short 0
+# CHECK-NEXT: .short 0
+# CHECK-NEXT: .long -16
+---
+name: indirect_base
+tracksRegLiveness: true
+frameInfo:
+  hasStackMap: true
+stack:
+  - { id: 0, type: spill-slot, offset: -16, size: 8, alignment: 8 }
+body: |
+  bb.0:
+    $rbp = frame-setup MOV64rr $rsp
+    $rsp = SUB64ri8 $rsp, 32, implicit-def dead $eflags
+    $r12 = MOV64rm $rbp, 1, $noreg, -16, $noreg :: (load (s64) from %stack.0)
+    STACKMAP 40, 0, 1, 8, $rbp, -16, 3
+    STACKMAP 41, 0, 1, 8, $rsp, -16, 3
+    $rsp = ADD64ri8 $rsp, 32, implicit-def dead $eflags
+    RET64 $r12
