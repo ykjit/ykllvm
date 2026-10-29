@@ -119,6 +119,7 @@ enum OpCode {
   OpCodeExtractValue,
   OpCodeFreeze,
   OpCodePromoteCodeId,
+  OpCodeAtomicLoad,
   OpCodeUnimplemented = 255, // YKFIXME: Will eventually be deleted.
 };
 
@@ -1128,45 +1129,39 @@ private:
 
   void serialiseLoadInst(LoadInst *I, FuncLowerCtxt &FLCtxt, unsigned BBIdx,
                          unsigned &InstIdx) {
-    // We don't yet support:
-    //  - some atomic loads
-    //  - loads from exotic address spaces
-    //
-    // FIXME: About misaligned loads, when a load is aligned `N`, this is a hard
-    // guarantee to the code generator that at runtime, the pointer is aligned
-    // to N bytes. The codegen uses this to decide whether or not to split the
-    // operation into multiple loads (in order to avoid a memory access
-    // straddling an alignment boundary on a CPU that disallows such things).
-    //
-    // The serialiser currently just ignores the aligments, which on x86 isn't
-    // a problem. However, eventually we will have to encode the alignment of
-    // the load into our IR and have the trace code generator split up the
-    // loads where necessary. The same will have to be done for store
-    // instructions.
-
-    // FIXME: Since we are only targeting x86 for now we can ignore the
-    // alignment of an atomic if doesn't straddle a word boundary. For other
-    // architectures or alignments we need to pass the alignment and whether or
-    // not this is an atomic through to the codegen so it can be handled there
-    // correctly.
-    if ((I->getOrdering() != AtomicOrdering::NotAtomic) ||
-        (I->getPointerAddressSpace() != 0)) {
-      serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
-      return;
-    }
     if (I->getPointerAddressSpace() != 0) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
       return;
     }
 
     // opcode:
-    serialiseOpcode(OpCodeLoad);
+    serialiseOpcode(I->isAtomic() ? OpCodeAtomicLoad : OpCodeLoad);
     // ptr:
     serialiseOperand(I, FLCtxt, I->getPointerOperand());
     // type_idx:
     OutStreamer.emitSizeT(typeIndex(I->getType()));
-    // volatile:
-    OutStreamer.emitInt8(I->isVolatile());
+    if (I->isAtomic()) {
+      // AtomicExpandPass turns non-naturally-aligned atomic loads into library
+      // calls. So if we've reached this point we know we have a naturally
+      // aligned atomic load.
+
+      // LLVM and Rust/yk differ on the names of orderings.
+      switch (I->getOrdering()) {
+      case AtomicOrdering::Monotonic: // "relaxed"
+        OutStreamer.emitInt8(0);
+        break;
+      case AtomicOrdering::Acquire: // "acquire"
+        OutStreamer.emitInt8(1);
+        break;
+      case AtomicOrdering::SequentiallyConsistent: // "seqcst"
+        OutStreamer.emitInt8(2);
+        break;
+      default:
+        llvm_unreachable("Unsupported atomic ordering");
+      }
+    } else {
+      OutStreamer.emitInt8(I->isVolatile());
+    }
 
     FLCtxt.updateVLMap(I, {BBIdx, InstIdx});
     InstIdx++;
@@ -1177,9 +1172,6 @@ private:
     // We don't yet support:
     //  - atomic store
     //  - stores into exotic address spaces
-    //
-    // See the comment in `serialiseLoadInst()` for context on misaligned memory
-    // accesses.
     if ((I->getOrdering() != AtomicOrdering::NotAtomic) ||
         (I->getPointerAddressSpace() != 0)) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
