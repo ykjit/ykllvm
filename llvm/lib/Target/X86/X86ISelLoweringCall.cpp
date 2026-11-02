@@ -27,6 +27,7 @@
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Module.h"
+#include "llvm/Support/Yk.h"
 #include "llvm/Transforms/CFGuard.h"
 
 #define DEBUG_TYPE "x86-isel"
@@ -2063,6 +2064,28 @@ X86TargetLowering::LowerCall(TargetLowering::CallLoweringInfo &CLI,
   bool IsIndirectCall = (CB && isa<CallInst>(CB) && CB->isIndirectCall());
   bool IsCFICall = IsIndirectCall && CLI.CFIType;
   const Module *M = MF.getFunction().getParent();
+
+  // We treat `yk_is_interpreting` specially: we lower it directly to a
+  // threadlocal load but keep the AOT IR unchanged (otherwise yk wouldn't see
+  // it properly).
+  if (auto *GA = dyn_cast<GlobalAddressSDNode>(Callee);
+      Is64Bit && CB && CB->getType()->isIntegerTy(1) && Outs.empty() &&
+      Ins.size() == 1 && GA &&
+      GA->getGlobal()->getName() == YK_IS_INTERPRETING) {
+    const GlobalVariable *State =
+        M->getGlobalVariable(YK_THREAD_TRACING_STATE_TL);
+    if (State && State->getValueType()->isIntegerTy(8) &&
+        State->getThreadLocalMode() == GlobalVariable::InitialExecTLSModel) {
+      SDValue Addr =
+          DAG.getGlobalAddress(State, dl, getPointerTy(DAG.getDataLayout()));
+      SDValue Load = DAG.getLoad(MVT::i8, dl, Chain, Addr,
+                                 MachinePointerInfo(State), Align(1));
+      InVals.push_back(DAG.getSetCC(
+          dl, Ins[0].VT, Load, DAG.getConstant(0, dl, MVT::i8), ISD::SETEQ));
+      isTailCall = false;
+      return Load.getValue(1);
+    }
+  }
 
   // If the indirect call target has the nocf_check attribute, the call needs
   // the NOTRACK prefix. For simplicity just disable tail calls as there are

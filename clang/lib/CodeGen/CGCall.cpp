@@ -46,6 +46,8 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Transforms/Utils/Local.h"
+#include "llvm/Transforms/Yk/Idempotent.h"
+#include "llvm/YkIR/YkIRWriter.h"
 #include <optional>
 using namespace clang;
 using namespace CodeGen;
@@ -2526,6 +2528,11 @@ void CodeGenModule::ConstructAttributeList(StringRef Name,
   // information.
   // FIXME: handle sseregparm someday...
   if (TargetDecl) {
+    if (!AttrOnCallSite && TargetDecl->hasAttr<YkIdempotentAttr>()) {
+      FuncAttrs.addAttribute(llvm::Attribute::NoInline);
+      FuncAttrs.addAttribute(YK_OUTLINE_FNATTR);
+      FuncAttrs.addAttribute(YK_IDEMPOTENT_FNATTR);
+    }
     if (TargetDecl->hasAttr<ReturnsTwiceAttr>())
       FuncAttrs.addAttribute(llvm::Attribute::ReturnsTwice);
     if (TargetDecl->hasAttr<NoThrowAttr>())

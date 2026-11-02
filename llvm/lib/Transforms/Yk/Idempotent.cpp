@@ -102,6 +102,10 @@ public:
             if (!CF || !CF->hasFnAttribute(YK_IDEMPOTENT_FNATTR)) {
               continue;
             }
+            if (CF->getName().starts_with(YK_IDEMPOTENT_LOAD_PREFIX)) {
+              // `__yk_idempotent_load_*` call `yk_promote` internally.
+              continue;
+            }
             Function *RecF =
                 getRecorderFunc(M, CF->getFunctionType()->getReturnType());
             if (RecF == nullptr) {

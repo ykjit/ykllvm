@@ -2164,7 +2164,13 @@ PassBuilder::buildLTODefaultPipeline(OptimizationLevel Level,
   // If we didn't decide to inline a function, check to see if we can
   // transform it to pass arguments by value instead of by reference.
   CGSCCPassManager CGPM;
-  CGPM.addPass(ArgumentPromotionPass());
+  // yk needs optimised function clones to have the same parameters as the
+  // unoptimised version: argument promotion can change the function's
+  // parameters in a way that breaks this. This call to argument promotion
+  // happens _after_ module cloning, which could cause unoptimised/optimised
+  // function's ABIs to become incompatible.
+  if (!YkDontOptFuncABI)
+    CGPM.addPass(ArgumentPromotionPass());
   CGPM.addPass(CoroSplitPass(Level != OptimizationLevel::O0));
   CGPM.addPass(CoroAnnotationElidePass());
   MPM.addPass(createModuleToPostOrderCGSCCPassAdaptor(std::move(CGPM)));

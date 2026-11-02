@@ -27,6 +27,7 @@
 #include "llvm/BinaryFormat/COFF.h"
 #include "llvm/BinaryFormat/ELF.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineModuleInfoImpls.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/CodeGenTypes/MachineValueType.h"
@@ -88,11 +89,28 @@ int getDwarfRegNumFallible(unsigned Reg, const TargetRegisterInfo *TRI) {
   return RegNum;
 }
 
+static int64_t encodeStackSlotOffset(const MachineInstr &MI, Register Base,
+                                    int FrameIndex, int64_t Offset) {
+  // Only RBP can be represented in the current extras encoding.
+  if (Base != X86::RBP)
+    report_fatal_error("alias not relative to RBP");
+
+  // Mutable (incoming) arguments are not yet supported.
+  const MachineFrameInfo &MFI = MI.getMF()->getFrameInfo();
+  if (Offset >= 0 && (!MFI.isFixedObjectIndex(FrameIndex) ||
+                     !MFI.isImmutableObjectIndex(FrameIndex) ||
+                     MFI.getObjectOffset(FrameIndex) < 0))
+    report_fatal_error("mutable arguments not supported");
+
+  return StackMaps::encodeSpillOffset(Offset);
+}
+
 /// Given a MachineBasicBlock, analyse its instructions and try to figure out
 /// which locations (registers/stack slots) contain copies of the same value.
 ///
-/// Locations are encoded as a signed integer, where a value >=0 is a DWARF
-/// register number, and value <0 is a rbp-based stack offset.
+/// Negative locations are RBP-relative stack offsets. Non-negative locations
+/// below StackMaps::NonNegativeFrameOffsetTag are DWARF register numbers; locations
+/// at or above the tag encode non-negative RBP-relative stack offsets.
 ///
 /// Note that:
 ///  - we don't track non-rbp-based memory loads/stores, e.g. `mov [rax], ...`.
@@ -155,7 +173,9 @@ void processInstructions(
       if (OffsetOp.isImm()) {
         const int64_t Offset = OffsetOp.getImm();
         // `DwReg` is moved into the stack `Offset`.
-        SpillMap.unifyWith(Offset, DwReg);
+        SpillMap.unifyWith(encodeStackSlotOffset(
+                               Instr, Instr.getOperand(0).getReg(), FI, Offset),
+                           DwReg);
       }
       if (MO.isKill()) {
         SpillMap.makeDistinct(DwReg);
@@ -173,7 +193,9 @@ void processInstructions(
       if (OffsetOp.isImm()) {
         const int64_t Offset = OffsetOp.getImm();
         // The data at the stack offset was copied into the register.
-        SpillMap.unifyWith(DwReg, Offset);
+        SpillMap.unifyWith(
+            DwReg, encodeStackSlotOffset(Instr, Instr.getOperand(1).getReg(),
+                                         FI, Offset));
       }
       // Can it happen? (it'd be a dead load).
       assert(!Lhs.isKill());
@@ -314,7 +336,8 @@ bool X86AsmPrinter::runOnMachineFunction(MachineFunction &MF) {
   // If we are using Yk JIT and it's something that we could trace, compute the
   // additional locations for stackmaps.
   Function &F = MF.getFunction();
-  if (YkStackMapAdditionalLocs &&
+  const MachineFrameInfo &MFI = MF.getFrameInfo();
+  if (YkStackMapAdditionalLocs && (MFI.hasStackMap() || MFI.hasPatchPoint()) &&
       (!F.hasFnAttribute(YK_OUTLINE_FNATTR) || containsControlPoint(F))) {
     findSpillLocations(&*MF.begin(), MBSpillMaps, SpillMap, StackmapSpillMaps);
   }

@@ -6,7 +6,7 @@
 // It works as follows:
 //
 // main() is assumed to be the entry point to the interpreter. In there we
-// malloc a chunk of memory for use as a shadow stack. The pointer to this
+// ask the runtime to allocate a shadow stack. The pointer to this
 // memory is then stored into a global variable for other functions to pick up.
 //
 // Then for each non-main function, F, we then insert a "shadow prologue" which:
@@ -102,11 +102,7 @@
 #define YK_MT_NEW "yk_mt_new"
 #define G_SHADOW_STACK "shadowstack_0"
 #define G_SHADOW_HEAD "shadowstack_head"
-#define G_SHADOW_SIZE "shadowstack_size"
 #define MAIN "main"
-// The size of the shadow stack. Defaults to 1MB.
-// YKFIXME: Make this adjustable by a compiler flag.
-#define SHADOW_STACK_SIZE 1000000
 
 using namespace llvm;
 
@@ -121,7 +117,6 @@ class YkShadowStackImpl {
   Type *Int8Ty = nullptr;
   Type *PtrTy = nullptr;
   Type *Int32Ty = nullptr;
-  Type *PointerSizedIntTy = nullptr;
   std::unique_ptr<DIBuilder> DIB;
 
   GlobalVariable *ShadowCurrent;
@@ -181,35 +176,33 @@ public:
   // Main is a little different, in that it actually allocates the shadow stack
   // and thus can use the allocation directly if it needs shadow space.
   //
-  // Returns a pointer to the result of the call to malloc that was used to
-  // heap allocate memory for a shadow stack.
+  // Returns a pointer to the main thread's shadow stack.
   CallInst *insertMainPrologue(Function *Main, size_t SFrameSize) {
     Module *M = Main->getParent();
     Instruction *First = &*Main->getEntryBlock().getFirstNonPHIIt();
     IRBuilder<> Builder(First);
 
-    // Create some memory on the heap for the shadow stack.
-    FunctionCallee MF =
-        M->getOrInsertFunction("malloc", PtrTy, PointerSizedIntTy);
-    CallInst *Malloc = Builder.CreateCall(
-        MF, {ConstantInt::get(PointerSizedIntTy, SHADOW_STACK_SIZE)}, "");
+    // ykrt is responsible for actually allocating memory.
+    FunctionCallee Alloc =
+        M->getOrInsertFunction("__yk_shadowstack_alloc", PtrTy);
+    CallInst *Stack = Builder.CreateCall(Alloc, {}, "");
 
-    Builder.CreateStore(Malloc, ShadowHead);
+    Builder.CreateStore(Stack, ShadowHead);
 
     // If main() needs shadow space, reserve some.
     if (SFrameSize > 0) {
       GetElementPtrInst *GEP = GetElementPtrInst::Create(
-          Int8Ty, Malloc, {ConstantInt::get(Int32Ty, SFrameSize)}, "",
-          Malloc->getNextNode()->getIterator());
+          Int8Ty, Stack, {ConstantInt::get(Int32Ty, SFrameSize)}, "",
+          Stack->getNextNode()->getIterator());
       // Update the global variable keeping track of the top of shadow stack.
       Builder.CreateStore(GEP, ShadowCurrent);
     } else {
       // If main doesn't require any shadow stack space then we simply
-      // initialise the global with the result of the call to malloc().
-      Builder.CreateStore(Malloc, ShadowCurrent);
+      // initialise the global with the result of the allocation.
+      Builder.CreateStore(Stack, ShadowCurrent);
     }
 
-    return Malloc;
+    return Stack;
   }
 
   // Scan the function `F` for instructions of interest and compute the layout
@@ -372,8 +365,8 @@ public:
     AllocaVector MainAllocas;
     std::vector<ReturnInst *> MainRets;
     size_t SFrameSize = analyseFunction(*Main, DL, MainAllocas, MainRets);
-    CallInst *Malloc = insertMainPrologue(Main, SFrameSize);
-    auto MainGEPs = rewriteAllocas(DL, MainAllocas, Malloc);
+    CallInst *Stack = insertMainPrologue(Main, SFrameSize);
+    auto MainGEPs = rewriteAllocas(DL, MainAllocas, Stack);
   }
 
   bool run(Module &M) {
@@ -391,15 +384,6 @@ public:
     PtrTy = PointerType::get(Context, 0);
     Int32Ty = Type::getInt32Ty(Context);
     DataLayout DL(M.getDataLayoutStr());
-    PointerSizedIntTy = DL.getIntPtrType(Context);
-
-    GlobalVariable *ShadowSize =
-        cast<GlobalVariable>(M.getOrInsertGlobal(G_SHADOW_SIZE, Int32Ty));
-    ShadowSize->setInitializer(
-        ConstantInt::get(Int32Ty, SHADOW_STACK_SIZE, false));
-    ShadowSize->setSection(".rodata");
-    ShadowSize->setLinkage(llvm::GlobalValue::ExternalLinkage);
-
     ShadowCurrent =
         cast<GlobalVariable>(M.getOrInsertGlobal(G_SHADOW_STACK, PtrTy));
     ShadowCurrent->setInitializer(

@@ -14,7 +14,7 @@
 # After the pass, the stackmap should include the additional location rbp-99 for r14.
 #
 # Test cases:
-# - r14: spilled to two locations (-99 and 5)
+# - r14: loaded from an incoming argument (+16) and copied to a local spill (-99)
 # - r15: spilled to two adjacent frame slots (-16 and -8)
 # - r13: no spills
 
@@ -22,7 +22,7 @@
 # CHECK-NEXT: .long   .Ltmp0-main
 # CHECK-NEXT: .short  0
 # CHECK-NEXT: .short  2
-# CHECK-NEXT: .byte   2
+# CHECK-NEXT: .byte   3
 # CHECK-NEXT: .byte   2
 # CHECK-NEXT: .byte   0
 # CHECK-NEXT: .short  8
@@ -43,6 +43,15 @@
 # CHECK-NEXT: .short  -99
 # CHECK-NEXT: .short  5
 # CHECK-NEXT: .long   0
+# The incoming RBP+16 slot is memory, not DWARF register 16 (RIP).
+# Register 5 (RDI) remains an alias because of the explicit register copy below.
+# CHECK-NEXT: .byte   3
+# CHECK-NEXT: .byte   0
+# CHECK-NEXT: .short  8
+# CHECK-NEXT: .short  6
+# CHECK-NEXT: .short  0
+# CHECK-NEXT: .short  0
+# CHECK-NEXT: .long   16
 # CHECK-NEXT: .byte   1
 # CHECK-NEXT: .byte   1
 # CHECK-NEXT: .byte   0
@@ -72,6 +81,8 @@ tracksRegLiveness: true
 frameInfo:
   hasPatchPoint:   true
   stackSize:       24
+fixedStack:
+  - { id: 0, type: default, offset: 0, size: 8, alignment: 8, isImmutable: true }
 stack:
   - { id: 0, type: spill-slot, offset: -8, size: 8, alignment: 8 }
   - { id: 1, type: spill-slot, offset: -16, size: 8, alignment: 8 }
@@ -81,16 +92,15 @@ body: |
     ; Initialize registers with test values
     $rdi = MOV64ri 1
     $r13 = MOV64ri 6
-    $r14 = MOV64ri 6
+    $r14 = MOV64rm $rbp, 1, $noreg, 16, $noreg :: (load (s64) from %fixed-stack.0)
     $r15 = MOV64ri 1
 
     ; Store r15 to two stack locations
     MOV64mr $rbp, 1, $noreg, -8, $noreg, $r15 :: (store (s64) into %stack.0)
     MOV64mr $rbp, 1, $noreg, -16, $noreg, $r15 :: (store (s64) into %stack.0)
     
-    ; Store r14 to two different stack locations
+    ; Copy the incoming argument to a local spill
     MOV64mr $rbp, 1, $noreg, -99, $noreg, $r14 :: (store (s64) into %stack.0)
-    MOV64mr $rbp, 1, $noreg, 5, $noreg, $r14 :: (store (s64) into %stack.0)
 
     ; Copy r14 to rdi for the function call
     $rdi = MOV64rr $r14

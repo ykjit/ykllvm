@@ -9,7 +9,7 @@ void g(void *p) {
   __yk_promote_ptr(p);
 }
 
-// CHECK: error: promotion detected in yk_outline annotated function 'main'
+// CHECK: error: promotion/idempotent_load detected in yk_outline annotated function 'main'
 __attribute__((yk_outline))
 int main(int argc, char **argv) {
   g(argv);

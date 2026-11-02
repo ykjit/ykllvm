@@ -3,6 +3,7 @@
 
 #include "llvm/Pass.h"
 
+#define YK_IDEMPOTENT_LOAD_PREFIX "__yk_idempotent_load_"
 #define YK_IDEMPOTENT_RECORDER_PREFIX "__yk_idempotent_promote_"
 #define YK_IDEMPOTENT_FNATTR "yk_idempotent"
 

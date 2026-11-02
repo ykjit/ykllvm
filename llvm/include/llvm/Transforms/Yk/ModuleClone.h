@@ -29,6 +29,7 @@ public:
   std::optional<std::map<Function *, Function *>>
   cloneFunctionsInModule(Module &);
   void removePromotion(CallBase *);
+  void removeIdemLoad(CallBase *);
   void removePromotionsAndDebugStrings(Function *);
   void updateCalls(std::map<Function *, Function *> &, Module &);
   void prependTracingCheck(Function *, Function *, Module &);

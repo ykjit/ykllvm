@@ -1,0 +1,87 @@
+# RUN: split-file %s %t
+# RUN: not --crash llc -mtriple=x86_64-- --yk-stackmap-add-locs %t/local.mir -o /dev/null 2>&1 | FileCheck %s
+# RUN: not --crash llc -mtriple=x86_64-- --yk-stackmap-add-locs %t/return-address.mir -o /dev/null 2>&1 | FileCheck %s
+# RUN: not --crash llc -mtriple=x86_64-- --yk-stackmap-add-locs %t/byval.mir -o /dev/null 2>&1 | FileCheck %s
+# RUN: not --crash llc -mtriple=x86_64-- --yk-stackmap-add-locs %t/rsp.mir -o /dev/null 2>&1 | FileCheck %s --check-prefix=RSP
+# RUN: llc -mtriple=x86_64-- --yk-stackmap-add-locs %t/no-stackmap.ll -o /dev/null
+
+# Non-negative RBP displacements alone do not identify incoming arguments.
+# Reject contradictory local-spill metadata and a saved return-address slot,
+# rather than emitting bogus incoming aliases or silently losing copies.
+# CHECK: LLVM ERROR: mutable arguments not supported
+
+#--- local.mir
+---
+name: local
+tracksRegLiveness: true
+frameInfo:
+  hasStackMap: true
+  stackSize: 32
+stack:
+  - { id: 0, type: spill-slot, offset: -8, size: 8, alignment: 8 }
+body: |
+  bb.0:
+    $rbp = frame-setup MOV64rr $rsp
+    $r12 = MOV64ri 1
+    MOV64mr $rbp, 1, $noreg, 16, $noreg, $r12 :: (store (s64) into %stack.0)
+    STACKMAP 46, 0, $r12, 3
+    RET64
+
+#--- return-address.mir
+---
+name: return_address
+tracksRegLiveness: true
+frameInfo:
+  hasStackMap: true
+  stackSize: 32
+fixedStack:
+  - { id: 0, type: default, offset: -8, size: 8, alignment: 8, isImmutable: true }
+body: |
+  bb.0:
+    $rbp = frame-setup MOV64rr $rsp
+    $r12 = MOV64rm $rbp, 1, $noreg, 8, $noreg :: (load (s64) from %fixed-stack.0)
+    STACKMAP 47, 0, $r12, 3
+    RET64
+
+# Mutable byval arguments can be partially overwritten after a load. Until the
+# tracker handles overlapping writes, reject these rather than record stale
+# aliases. R13 and the eight bytes at RBP+16 need not match at the stackmap.
+#--- byval.mir
+---
+name: byval
+tracksRegLiveness: true
+frameInfo:
+  hasStackMap: true
+  stackSize: 32
+fixedStack:
+  - { id: 0, type: default, offset: 0, size: 8, alignment: 8 }
+body: |
+  bb.0:
+    $rbp = frame-setup MOV64rr $rsp
+    $r13 = MOV64rm $rbp, 1, $noreg, 16, $noreg :: (load (s64) from %fixed-stack.0)
+    MOV8mi $rbp, 1, $noreg, 17, $noreg, 1 :: (store (s8) into %fixed-stack.0 + 1)
+    STACKMAP 48, 0, $r13, 3
+    RET64
+
+# The alias tracker cannot represent RSP-relative stack slots.
+# RSP: LLVM ERROR: alias not relative to RBP
+#--- rsp.mir
+---
+name: rsp
+tracksRegLiveness: true
+frameInfo:
+  hasStackMap: true
+fixedStack:
+  - { id: 0, type: default, offset: 0, size: 8, alignment: 8, isImmutable: true }
+body: |
+  bb.0:
+    $r13 = MOV64rm $rsp, 1, $noreg, 8, $noreg :: (load (s64) from %fixed-stack.0)
+    STACKMAP 49, 0, $r13, 3
+    RET64
+
+# Functions without stackmaps or patchpoints need no alias analysis. In
+# particular, their incoming arguments may be accessed relative to RSP.
+#--- no-stackmap.ll
+define i64 @no_stackmap(i64 %a, i64 %b, i64 %c, i64 %d, i64 %e, i64 %f, i64 %g) {
+  ret i64 %g
+}

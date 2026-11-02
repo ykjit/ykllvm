@@ -178,6 +178,7 @@
 #include "llvm/IR/DebugLoc.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/GlobalAlias.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -230,6 +231,20 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
   if (!MF.getTarget().getTargetTriple().isX86_64())
     report_fatal_error("FixStackmapsSpillReloads only supports x86-64 targets");
 
+  // First work out from the basic block structure which stackmap IDs relate to
+  // branches.
+  std::set<uint64_t> BranchStackmapIDs;
+  for (const BasicBlock &BB : MF.getFunction()) {
+    const Instruction *Term = BB.getTerminator();
+    const auto *Br = dyn_cast<BranchInst>(Term);
+    if (!(Br && Br->isConditional()) && !isa<SwitchInst>(Term))
+      continue;
+    const auto *SM = dyn_cast_or_null<IntrinsicInst>(Term->getPrevNode());
+    if (SM && SM->getIntrinsicID() == Intrinsic::experimental_stackmap)
+      BranchStackmapIDs.insert(
+          cast<ConstantInt>(SM->getArgOperand(0))->getZExtValue());
+  }
+
   TRI = MF.getSubtarget().getRegisterInfo();
   bool Changed = false;
   const TargetInstrInfo *TII = MF.getSubtarget().getInstrInfo();
@@ -273,9 +288,14 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
       }
 
       if (MI.getOpcode() == TargetOpcode::STACKMAP) {
+        if (BranchStackmapIDs.count(MI.getOperand(0).getImm())) {
+          // The stackmap we're looking at relates to a branch, not a call.
+          LastCall = nullptr;
+          Collect = false;
+          Spills.clear();
+        }
         if (LastCall == nullptr) {
-          // There wasn't a call preceeding this stackmap, so this must be
-          // attached to a branch or switch instruction.
+          // Handle stackmaps attached to branches and switches.
 
           // SelectionDAG can use a value V in a switch and also record a zero
           // extension of V in the associated stackmap. We track V directly in
@@ -362,35 +382,11 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
                 Op.setIsKill(false);
                 MIB.add(Op);
               } else if (TII->isLoadFromStackSlotPostFE(*SMI, FI)) {
-                // If the reload is a load from the stack, replace the operand
-                // with multiple operands describing a stack location.
-                std::optional<LocationSize> Size = SMI->getRestoreSize(TII);
-                if (!Size.has_value()) {
-                  // This reload isn't a spill, e.g. this could be loading an
-                  // argument passed via the stack and look like this:
-                  //
-                  //   mov rax, rbp + 10
-                  //   STACKMAP rax
-                  //
-                  // We know that, after moving the stackmap, following the
-                  // stackmap instruction we'll immediately write to the
-                  // tracked register, so there is no need to track it at all.
-                  // However, we can't just remove the operand as that would
-                  // change the order of the tracked values and means we can't
-                  // match them to LLVM IR operands anymore. Leaving the
-                  // operand in also doesn't work as the verifier then
-                  // sometimes complains about the use of undefined registers.
-                  // Instead, we can just insert a constant `0xdead`, which has
-                  // no consequences for deopt (it will just be ignored) but is
-                  // something we can easily spot if things go wrong.
-                  MIB.addImm(StackMaps::ConstantOp);
-                  MIB.addImm(0xdead);
-                } else {
-                  MIB.addImm(StackMaps::IndirectMemRefOp);
-                  MIB.addImm(Size.value().getValue()); // Size
-                  MIB.add(SMI->getOperand(1));         // Register
-                  MIB.add(SMI->getOperand(4));         // Offset
-                }
+                LocationSize Size = (*SMI->memoperands_begin())->getSize();
+                MIB.addImm(StackMaps::IndirectMemRefOp);
+                MIB.addImm(Size.getValue()); // Size
+                MIB.add(SMI->getOperand(1)); // Register
+                MIB.add(SMI->getOperand(4)); // Offset
               } else {
                 // This tracked operand maps to an instruction that isn't a
                 // spill, e.g. `$rax = lea $rbp-8`. We can't determine another

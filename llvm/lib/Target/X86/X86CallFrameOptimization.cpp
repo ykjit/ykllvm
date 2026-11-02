@@ -58,6 +58,8 @@ static cl::opt<bool>
                cl::desc("Avoid optimizing x86 call frames for size"),
                cl::init(false), cl::Hidden);
 
+extern bool YkStackMapAdditionalLocs;
+
 namespace {
 
 class X86CallFrameOptimizationImpl {
@@ -142,6 +144,12 @@ INITIALIZE_PASS(X86CallFrameOptimizationLegacy, DEBUG_TYPE,
 // we don't even want to try.
 bool X86CallFrameOptimizationImpl::isLegal(MachineFunction &MF) {
   if (NoX86CFOpt.getValue())
+    return false;
+
+  // yk expects frames to have a fixed stack size without RSP being fiddled
+  // with.
+  if (YkStackMapAdditionalLocs &&
+      (MF.getFrameInfo().hasStackMap() || MF.getFrameInfo().hasPatchPoint()))
     return false;
 
   // We can't encode multiple DW_CFA_GNU_args_size or DW_CFA_def_cfa_offset
