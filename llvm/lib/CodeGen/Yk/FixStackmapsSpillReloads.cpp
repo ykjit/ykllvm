@@ -449,7 +449,11 @@ bool FixStackmapsSpillReloads::runOnMachineFunction(MachineFunction &MF) {
 
       // Collect spill reloads that appear between a call and its corresponding
       // STACKMAP instruction.
-      if (Collect) {
+      //
+      // Note: `KILL` instructions are ignored because they do not change
+      // what's stored at a location. Their effect on liveness is dealt with by
+      // `recomputeLivenessFlags` later.
+      if (Collect && !MI.isKill()) {
         for (MachineOperand &Op : MI.defs()) {
           // Collect each defined register and map it to its source
           // instruction.

@@ -1,0 +1,29 @@
+# RUN: llc -mtriple=x86_64-- -stop-after fix-stackmaps-spill-reloads --yk-stackmap-spillreloads-fix %s -o - | FileCheck %s
+
+# A KILL pseudo after a call does not change eax, and that return value must
+# remain in the stackmap even after the stackmap is moved before the KILL.
+# CHECK-LABEL: name: call_result
+# CHECK: CALL64pcrel32 @call_result
+# CHECK-NEXT: STACKMAP 1, 0, renamable $eax, 3, 3
+# CHECK-NEXT: dead renamable $eax = KILL killed $eax, implicit-def dead $rax
+# CHECK: CALL64pcrel32 @call_result
+# CHECK-NEXT: STACKMAP 2, 0, $eax, 3, 3
+# CHECK-NEXT: $ebx = MOV32rr killed $eax
+# CHECK-NEXT: dead $ebx = KILL killed $ebx, implicit-def dead $rbx
+
+---
+name: call_result
+tracksRegLiveness: true
+frameInfo:
+  hasStackMap: true
+body: |
+  bb.0:
+    CALL64pcrel32 @call_result, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $eax
+    renamable $eax = KILL $eax, implicit-def $rax
+    STACKMAP 1, 0, renamable $eax, 3
+    CALL64pcrel32 @call_result, csr_64, implicit $rsp, implicit $ssp, implicit-def $rsp, implicit-def $ssp, implicit-def $eax
+    $ebx = MOV32rr $eax
+    $ebx = KILL $ebx, implicit-def $rbx
+    STACKMAP 2, 0, $ebx, 3
+    RET64 $ebx
+...
