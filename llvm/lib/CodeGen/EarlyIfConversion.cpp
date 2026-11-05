@@ -38,10 +38,12 @@
 #include "llvm/CodeGen/TargetInstrInfo.h"
 #include "llvm/CodeGen/TargetRegisterInfo.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/IR/Function.h"
 #include "llvm/InitializePasses.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 
 using namespace llvm;
 
@@ -1326,7 +1328,8 @@ EarlyIfConverterPass::run(MachineFunction &MF,
 }
 
 bool EarlyIfConverterLegacy::runOnMachineFunction(MachineFunction &MF) {
-  if (skipFunction(MF.getFunction()))
+  if (skipFunction(MF.getFunction()) &&
+      !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
 
   MachineDominatorTree &MDT =
@@ -1450,7 +1453,8 @@ bool EarlyIfPredicator::tryConvertIf(MachineBasicBlock *MBB) {
 bool EarlyIfPredicator::runOnMachineFunction(MachineFunction &MF) {
   LLVM_DEBUG(dbgs() << "********** EARLY IF-PREDICATOR **********\n"
                     << "********** Function: " << MF.getName() << '\n');
-  if (skipFunction(MF.getFunction()))
+  if (skipFunction(MF.getFunction()) &&
+      !MF.getFunction().hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
     return false;
 
   const TargetSubtargetInfo &STI = MF.getSubtarget();

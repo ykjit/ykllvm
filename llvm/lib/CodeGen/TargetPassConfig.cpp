@@ -953,7 +953,9 @@ void TargetPassConfig::addIRPasses() {
     addPass(createExpandReductionsPass());
 
   // Convert conditional moves to conditional jumps when profitable.
-  if (getOptLevel() != CodeGenOptLevel::None && !DisableSelectOptimize)
+  if (getOptLevel() != CodeGenOptLevel::None &&
+      (!DisableSelectOptimize ||
+       (YkMarkTraceableOptNone && DisableSelectOptimize.getNumOccurrences() == 0)))
     addPass(createSelectOptimizePass());
 
   if (EnableGlobalMergeFunc)

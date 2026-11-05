@@ -37,6 +37,7 @@
 #include "llvm/Support/ScaledNumber.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Utils/SizeOpts.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include <algorithm>
 #include <queue>
 #include <stack>
@@ -311,7 +312,7 @@ public:
   SelectOptimize() : FunctionPass(ID) {}
 
   bool runOnFunction(Function &F) override {
-    if (skipFunction(F))
+    if (skipFunction(F) && !F.hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
       return false;
 
     return Impl.runOnFunction(F, *this);
