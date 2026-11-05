@@ -58,6 +58,7 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/BuildLibCalls.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include <algorithm>
 #include <numeric>
 #include <utility>
@@ -925,7 +926,8 @@ public:
   }
 
   bool runOnFunction(Function &F) override {
-    if (skipFunction(F)) return false;
+    if (skipFunction(F) && !F.hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
+      return false;
     const auto &TLI = getAnalysis<TargetLibraryInfoWrapperPass>().getTLI(F);
     const auto &TTI = getAnalysis<TargetTransformInfoWrapperPass>().getTTI(F);
     // MergeICmps does not need the DominatorTree, but we update it if it's

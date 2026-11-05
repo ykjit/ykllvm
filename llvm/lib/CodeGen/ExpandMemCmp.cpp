@@ -23,6 +23,7 @@
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/IR/Dominators.h"
+#include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/IR/ProfDataUtils.h"
@@ -31,6 +32,7 @@
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/SizeOpts.h"
+#include "llvm/Transforms/Yk/MarkTraceableOptNone.h"
 #include <optional>
 
 using namespace llvm;
@@ -912,7 +914,8 @@ public:
   ExpandMemCmpLegacyPass() : FunctionPass(ID) {}
 
   bool runOnFunction(Function &F) override {
-    if (skipFunction(F)) return false;
+    if (skipFunction(F) && !F.hasFnAttribute(YK_AUTO_OPTNONE_FNATTR))
+      return false;
 
     auto *TPC = getAnalysisIfAvailable<TargetPassConfig>();
     if (!TPC) {
