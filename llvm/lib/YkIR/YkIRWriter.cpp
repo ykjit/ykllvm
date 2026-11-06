@@ -120,6 +120,7 @@ enum OpCode {
   OpCodeFreeze,
   OpCodePromoteCodeId,
   OpCodeAtomicLoad,
+  OpCodeAtomicStore,
   OpCodeUnimplemented = 255, // YKFIXME: Will eventually be deleted.
 };
 
@@ -1127,6 +1128,32 @@ private:
     InstIdx++;
   }
 
+  void serialiseAtomicOrdering(AtomicOrdering Ordering) {
+    // LLVM and Rust/yk differ on the names of orderings.
+    switch (Ordering) {
+    case AtomicOrdering::Unordered: // no direct equivalent in Rust
+      OutStreamer.emitInt8(0);
+      break;
+    case AtomicOrdering::Monotonic: // "Relaxed".
+      OutStreamer.emitInt8(1);
+      break;
+    case AtomicOrdering::Acquire: // "Acquire"
+      OutStreamer.emitInt8(2);
+      break;
+    case AtomicOrdering::Release: // "Release"
+      OutStreamer.emitInt8(3);
+      break;
+    case AtomicOrdering::AcquireRelease: // "AcqRel"
+      OutStreamer.emitInt8(4);
+      break;
+    case AtomicOrdering::SequentiallyConsistent: // "SeqCst"
+      OutStreamer.emitInt8(5);
+      break;
+    default:
+      llvm_unreachable("Unsupported atomic ordering");
+    }
+  }
+
   void serialiseLoadInst(LoadInst *I, FuncLowerCtxt &FLCtxt, unsigned BBIdx,
                          unsigned &InstIdx) {
     if (I->getPointerAddressSpace() != 0) {
@@ -1144,21 +1171,7 @@ private:
       // AtomicExpandPass turns non-naturally-aligned atomic loads into library
       // calls. So if we've reached this point we know we have a naturally
       // aligned atomic load.
-
-      // LLVM and Rust/yk differ on the names of orderings.
-      switch (I->getOrdering()) {
-      case AtomicOrdering::Monotonic: // "relaxed"
-        OutStreamer.emitInt8(0);
-        break;
-      case AtomicOrdering::Acquire: // "acquire"
-        OutStreamer.emitInt8(1);
-        break;
-      case AtomicOrdering::SequentiallyConsistent: // "seqcst"
-        OutStreamer.emitInt8(2);
-        break;
-      default:
-        llvm_unreachable("Unsupported atomic ordering");
-      }
+      serialiseAtomicOrdering(I->getOrdering());
     } else {
       OutStreamer.emitInt8(I->isVolatile());
     }
@@ -1169,23 +1182,25 @@ private:
 
   void serialiseStoreInst(StoreInst *I, FuncLowerCtxt &FLCtxt, unsigned BBIdx,
                           unsigned &InstIdx) {
-    // We don't yet support:
-    //  - atomic store
-    //  - stores into exotic address spaces
-    if ((I->getOrdering() != AtomicOrdering::NotAtomic) ||
-        (I->getPointerAddressSpace() != 0)) {
+    if (I->getPointerAddressSpace() != 0) {
       serialiseUnimplementedInstruction(I, FLCtxt, BBIdx, InstIdx);
       return;
     }
 
     // opcode:
-    serialiseOpcode(OpCodeStore);
+    serialiseOpcode(I->isAtomic() ? OpCodeAtomicStore : OpCodeStore);
     // value:
     serialiseOperand(I, FLCtxt, I->getValueOperand());
     // ptr:
     serialiseOperand(I, FLCtxt, I->getPointerOperand());
-    // volatile:
-    OutStreamer.emitInt8(I->isVolatile());
+    if (I->isAtomic()) {
+      // AtomicExpandPass turns non-naturally-aligned atomic loads into library
+      // calls. So if we've reached this point we know we have a naturally
+      // aligned atomic load.
+      serialiseAtomicOrdering(I->getOrdering());
+    } else {
+      OutStreamer.emitInt8(I->isVolatile());
+    }
 
     InstIdx++;
   }
