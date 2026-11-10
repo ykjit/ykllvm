@@ -273,6 +273,14 @@ StackMaps::parseOperand(MachineInstr::const_mop_iterator MOI,
             return ++MOI;
           }
         }
+        // We couldn't find a register, so we need to emit stack copies as full
+        // locations.
+        for (const int64_t L : Others) {
+          const int64_t Offset = L >= NonNegativeFrameOffsetTag
+                                     ? L - NonNegativeFrameOffsetTag
+                                     : L;
+          Locs.emplace_back(Location::Indirect, Size, DwarfRegNum, Offset);
+        }
       }
       Locs.emplace_back(StackMaps::Location::Indirect, Size, DwarfRegNum, Imm);
       break;
