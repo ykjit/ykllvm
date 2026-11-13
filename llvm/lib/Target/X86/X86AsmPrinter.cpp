@@ -106,25 +106,6 @@ static int64_t encodeStackSlotOffset(const MachineInstr &MI, Register Base,
   return StackMaps::encodeSpillOffset(Offset);
 }
 
-/// Returns true if `MI` loads a whole 8/16-bit stack slot into a register and
-/// zero-extends it.
-static bool isSlotZExtLoad(const MachineInstr &MI, int &FI) {
-  switch (MI.getOpcode()) {
-  case X86::MOVZX32rm8:
-  case X86::MOVZX32rm16:
-    break;
-  default:
-    return false;
-  }
-  SmallVector<const MachineMemOperand *, 1> Accesses;
-  if (!TII->hasLoadFromStackSlot(MI, Accesses) || Accesses.size() != 1)
-    return false;
-  FI = cast<FixedStackPseudoSourceValue>(Accesses[0]->getPseudoValue())
-           ->getFrameIndex();
-  return Accesses[0]->getSize() ==
-         LocationSize::precise(MI.getMF()->getFrameInfo().getObjectSize(FI));
-}
-
 /// Given a MachineBasicBlock, analyse its instructions and try to figure out
 /// which locations (registers/stack slots) contain copies of the same value.
 ///
@@ -205,8 +186,7 @@ void processInstructions(
 
     // A value from the stack was loaded back into a register. Create a mapping from
     // that register to the stack offset.
-    if (TII->isLoadFromStackSlotPostFE(Instr, FI) ||
-        isSlotZExtLoad(Instr, FI)) {
+    if (TII->isLoadFromStackSlotPostFE(Instr, FI)) {
       const MachineOperand OffsetOp = Instr.getOperand(4);
       const MachineOperand Lhs = Instr.getOperand(0);
       assert(Lhs.isReg() && "Is register.");
