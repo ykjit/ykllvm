@@ -29,7 +29,6 @@
 #include "llvm/CodeGen/MachineConstantPool.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineModuleInfoImpls.h"
-#include "llvm/CodeGen/PseudoSourceValue.h"
 #include "llvm/CodeGen/TargetLoweringObjectFileImpl.h"
 #include "llvm/CodeGenTypes/MachineValueType.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -104,25 +103,6 @@ static int64_t encodeStackSlotOffset(const MachineInstr &MI, Register Base,
     report_fatal_error("mutable arguments not supported");
 
   return StackMaps::encodeSpillOffset(Offset);
-}
-
-/// Returns true if `MI` loads a whole 8/16-bit stack slot into a register and
-/// zero-extends it.
-static bool isSlotZExtLoad(const MachineInstr &MI, int &FI) {
-  switch (MI.getOpcode()) {
-  case X86::MOVZX32rm8:
-  case X86::MOVZX32rm16:
-    break;
-  default:
-    return false;
-  }
-  SmallVector<const MachineMemOperand *, 1> Accesses;
-  if (!TII->hasLoadFromStackSlot(MI, Accesses) || Accesses.size() != 1)
-    return false;
-  FI = cast<FixedStackPseudoSourceValue>(Accesses[0]->getPseudoValue())
-           ->getFrameIndex();
-  return Accesses[0]->getSize() ==
-         LocationSize::precise(MI.getMF()->getFrameInfo().getObjectSize(FI));
 }
 
 /// Given a MachineBasicBlock, analyse its instructions and try to figure out
@@ -206,7 +186,7 @@ void processInstructions(
     // A value from the stack was loaded back into a register. Create a mapping from
     // that register to the stack offset.
     if (TII->isLoadFromStackSlotPostFE(Instr, FI) ||
-        isSlotZExtLoad(Instr, FI)) {
+        TII->isZExtLoadFromStackSlotPostFE(Instr, FI)) {
       const MachineOperand OffsetOp = Instr.getOperand(4);
       const MachineOperand Lhs = Instr.getOperand(0);
       assert(Lhs.isReg() && "Is register.");
