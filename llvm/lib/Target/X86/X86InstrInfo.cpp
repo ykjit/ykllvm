@@ -688,8 +688,6 @@ Register X86InstrInfo::isLoadFromStackSlot(const MachineInstr &MI,
   return Register();
 }
 
-extern bool YkStackMapAdditionalLocs;
-
 Register X86InstrInfo::isLoadFromStackSlotPostFE(const MachineInstr &MI,
                                                  int &FrameIndex) const {
   TypeSize Dummy = TypeSize::getZero();
@@ -703,24 +701,6 @@ Register X86InstrInfo::isLoadFromStackSlotPostFE(const MachineInstr &MI,
           cast<FixedStackPseudoSourceValue>(Accesses.front()->getPseudoValue())
               ->getFrameIndex();
       return MI.getOperand(0).getReg();
-    }
-  }
-  // `X86FixupBWInsts` pass widens 8/16-bit reloads to zero-extending loads.
-  // Treat such loads as a reload only if it reads the entire slot.
-  // Only under `--yk-stackmap-add-locs`, so upstream behaviour is unchanged.
-  if (YkStackMapAdditionalLocs &&
-      (MI.getOpcode() == X86::MOVZX32rm8 ||
-       MI.getOpcode() == X86::MOVZX32rm16)) {
-    SmallVector<const MachineMemOperand *, 1> Accesses;
-    if (hasLoadFromStackSlot(MI, Accesses) && Accesses.size() == 1) {
-      int FI =
-          cast<FixedStackPseudoSourceValue>(Accesses[0]->getPseudoValue())
-              ->getFrameIndex();
-      if (Accesses[0]->getSize() ==
-          LocationSize::precise(MI.getMF()->getFrameInfo().getObjectSize(FI))) {
-        FrameIndex = FI;
-        return MI.getOperand(0).getReg();
-      }
     }
   }
   return Register();
