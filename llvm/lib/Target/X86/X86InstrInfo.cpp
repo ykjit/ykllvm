@@ -706,6 +706,25 @@ Register X86InstrInfo::isLoadFromStackSlotPostFE(const MachineInstr &MI,
   return Register();
 }
 
+bool X86InstrInfo::isZExtLoadFromStackSlotPostFE(const MachineInstr &MI,
+                                                 int &FrameIndex) const {
+  switch (MI.getOpcode()) {
+  case X86::MOVZX32rm8:
+  case X86::MOVZX32rm16:
+    break;
+  default:
+    return false;
+  }
+  SmallVector<const MachineMemOperand *, 1> Accesses;
+  if (!hasLoadFromStackSlot(MI, Accesses) || Accesses.size() != 1)
+    return false;
+  FrameIndex = cast<FixedStackPseudoSourceValue>(Accesses[0]->getPseudoValue())
+                   ->getFrameIndex();
+  return Accesses[0]->getSize() ==
+         LocationSize::precise(
+             MI.getMF()->getFrameInfo().getObjectSize(FrameIndex));
+}
+
 Register X86InstrInfo::isStoreToStackSlot(const MachineInstr &MI,
                                           int &FrameIndex) const {
   TypeSize Dummy = TypeSize::getZero();

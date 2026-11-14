@@ -327,6 +327,10 @@ public:
   /// reliable for correctness.
   Register isLoadFromStackSlotPostFE(const MachineInstr &MI,
                                      int &FrameIndex) const override;
+  /// isZExtLoadFromStackSlotPostFE - Check for a zero-extending load of a
+  /// whole 8/16-bit stack slot, e.g. a reload widened by X86FixupBWInsts.
+  bool isZExtLoadFromStackSlotPostFE(const MachineInstr &MI,
+                                     int &FrameIndex) const override;
 
   Register isStoreToStackSlot(const MachineInstr &MI,
                               int &FrameIndex) const override;
