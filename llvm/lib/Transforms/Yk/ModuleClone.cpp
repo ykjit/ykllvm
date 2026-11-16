@@ -315,3 +315,11 @@ PreservedAnalyses ModuleClonePass::run(Module &M, ModuleAnalysisManager &MAM) {
 
   return PreservedAnalyses::none();
 }
+
+PreservedAnalyses ModuleCloneVectorizePass::run(Function &F,
+                                                FunctionAnalysisManager &AM) {
+  if (!F.getMetadata(YK_SWT_OPT_MD) || !F.hasFnAttribute(YK_OUTLINE_FNATTR) ||
+      containsControlPoint(F))
+    return PreservedAnalyses::all();
+  return VectorPM.run(F, AM);
+}
