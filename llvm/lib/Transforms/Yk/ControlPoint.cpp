@@ -242,23 +242,7 @@ ModulePass *llvm::createYkControlPointPass(uint64_t controlPointCount) {
 
 // Returns true iff the function contains a (patched or unpatched) control
 // point.
-//
-// XXX: This should be a separate analysis pass rather than sharing global state
-// between passes.
 bool llvm::containsControlPoint(llvm::Function &F) {
-  static llvm::DenseMap<llvm::Function *, bool> cache;
-
-  auto it = cache.find(&F);
-  if (it != cache.end()) {
-    return it->second;
-  }
-
-  // Slow path
-  static const StringRef CP_PP_NAME_REF(CP_PPNAME);
-  static const StringRef YK_DUMMY_CP_REF(YK_DUMMY_CONTROL_POINT);
-  static const StringRef YK_NEW_CP_REF(YK_NEW_CONTROL_POINT);
-
-  bool result = false;
   for (BasicBlock &BB : F) {
     for (Instruction &I : BB) {
       if (CallBase *CI = dyn_cast<CallBase>(&I)) {
@@ -268,27 +252,17 @@ bool llvm::containsControlPoint(llvm::Function &F) {
 
         StringRef CFName = CF->getName();
 
-        if (CFName == YK_DUMMY_CP_REF) {
-          result = true;
-          goto done;
-        }
+        if (CFName == YK_DUMMY_CONTROL_POINT)
+          return true;
 
-        if (CFName == CP_PP_NAME_REF) {
-          if (Value *PPTgt = CI->getArgOperand(PP_TARGET_OPND_IDX)) {
-            if (auto *Tgt = dyn_cast<Function>(PPTgt)) {
-              if (Tgt->getName() == YK_NEW_CP_REF) {
-                result = true;
-                goto done;
-              }
-            }
-          }
+        if (CFName == CP_PPNAME) {
+          auto *Tgt = dyn_cast<Function>(CI->getArgOperand(PP_TARGET_OPND_IDX));
+          if (Tgt && Tgt->getName() == YK_NEW_CONTROL_POINT)
+            return true;
         }
       }
     }
   }
 
-done:
-  // Store result in cache and return
-  cache[&F] = result;
-  return result;
+  return false;
 }
