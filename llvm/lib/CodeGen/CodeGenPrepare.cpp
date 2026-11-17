@@ -2241,12 +2241,10 @@ bool CodeGenPrepare::optimizeCmp(CmpInst *Cmp, ModifyDT &ModifiedDT) {
   if (sinkCmpExpression(Cmp, *TLI, *DL))
     return true;
 
-  if (!YkNoOverflowIntrinsicFormation &&
-      combineToUAddWithOverflow(Cmp, ModifiedDT))
+  if (combineToUAddWithOverflow(Cmp, ModifiedDT))
     return true;
 
-  if (!YkNoOverflowIntrinsicFormation &&
-      combineToUSubWithOverflow(Cmp, ModifiedDT))
+  if (combineToUSubWithOverflow(Cmp, ModifiedDT))
     return true;
 
   if (unfoldPowerOf2Test(Cmp))
