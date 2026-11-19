@@ -113,18 +113,15 @@ public:
               // existing value of the stackmap (if such a value exists). This
               // behaviour is relied on by yk's aot_ir to create two statepoints
               // from this single stackmap.
-              SMCalls.push_back({I.getNextNode(), LA.getLiveVarsBefore(&I)});
-              bool ReturnIsLive = false;
-              if (!CI.getType()->isVoidTy()) {
-                auto Next = LA.getLiveVarsBefore(I.getNextNode());
-                ReturnIsLive =
-                    std::find(Next.begin(), Next.end(), &CI) != Next.end();
-              }
-              if (ReturnIsLive)
-                SMCalls.back().live_vars.push_back(&CI);
-              else if (!SMCalls.back().live_vars.empty())
-                SMCalls.back().live_vars.push_back(
-                    SMCalls.back().live_vars.back());
+              // A suspended caller resumes after the call, so operands whose
+              // last use is the call do not need a location in its frame.
+              auto Live = LA.getLiveVarsBefore(I.getNextNode());
+              auto Ret = std::find(Live.begin(), Live.end(), &CI);
+              if (Ret != Live.end())
+                std::rotate(Ret, Ret + 1, Live.end());
+              else if (!Live.empty())
+                Live.push_back(Live.back());
+              SMCalls.push_back({I.getNextNode(), std::move(Live)});
             }
           } else if ((isa<BranchInst>(I) &&
                       cast<BranchInst>(I).isConditional()) ||
