@@ -8,7 +8,7 @@ entry:
 define i32 @order(i32 %x) {
 ; CHECK-LABEL: define i32 @order
 ; CHECK: %r = call i32 @callee(i32 %x)
-; CHECK-NEXT: call void (i64, i32, ...) @llvm.experimental.stackmap(i64 1, i32 0, i32 %x, i32 %local, i32 %from_later_block, i32 %r)
+; CHECK-NEXT: call void (i64, i32, ...) @llvm.experimental.stackmap(i64 1, i32 0, i32 %local, i32 %from_later_block, i32 %r)
 entry:
   br label %later
 
@@ -27,7 +27,7 @@ later:
 define i32 @dependency_order(i32 %x) {
 ; CHECK-LABEL: define i32 @dependency_order
 ; CHECK: %r = call i32 @callee(i32 %x)
-; CHECK-NEXT: call void (i64, i32, ...) @llvm.experimental.stackmap(i64 2, i32 0, i32 %x, i32 %base, i32 %mid, i32 %derived, i32 %r)
+; CHECK-NEXT: call void (i64, i32, ...) @llvm.experimental.stackmap(i64 2, i32 0, i32 %base, i32 %mid, i32 %derived, i32 %r)
 entry:
   br label %def
 
