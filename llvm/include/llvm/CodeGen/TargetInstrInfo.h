@@ -342,6 +342,12 @@ public:
     return 0;
   }
 
+  /// Like isLoadFromStackSlotPostFE, but matches zero-extending loads.
+  virtual bool isZExtLoadFromStackSlotPostFE(const MachineInstr &MI,
+                                             int &FrameIndex) const {
+    return false;
+  }
+
   /// If the specified machine instruction has a load from a stack slot,
   /// return true along with the FrameIndices of the loaded stack slot and the
   /// machine mem operands containing the reference.

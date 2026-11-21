@@ -1,0 +1,50 @@
+# RUN: llc -mtriple=x86_64-- --yk-stackmap-add-locs %s -o - | FileCheck %s
+
+# `X86FixupBWInsts` widens a 16-bit reload to `MOVZX32rm16`. It is still a
+# reload: the 2-byte value in `$di` keeps its 2-byte slot as an extra location.
+# CHECK-LABEL: .quad 1
+# CHECK: .short 1
+# CHECK-NEXT: .byte 1
+# CHECK-NEXT: .byte 1
+# CHECK-NEXT: .byte 0
+# CHECK-NEXT: .short 2
+# CHECK-NEXT: .short 5
+# CHECK-NEXT: .short 0
+# CHECK-NEXT: .short 1
+# CHECK-NEXT: .short -16
+# CHECK-NEXT: .long 0
+
+# A load of part of a slot is not a copy of the slot.
+# CHECK-LABEL: .quad 2
+# CHECK: .short 1
+# CHECK-NEXT: .byte 1
+# CHECK-NEXT: .byte 1
+# CHECK-NEXT: .byte 0
+# CHECK-NEXT: .short 2
+# CHECK-NEXT: .short 5
+# CHECK-NEXT: .short 0
+# CHECK-NEXT: .short 0
+# CHECK-NEXT: .long 0
+
+---
+name: zext_reload
+tracksRegLiveness: true
+frameInfo:
+  hasStackMap: true
+stack:
+  - { id: 0, type: spill-slot, offset: -16, size: 2, alignment: 2 }
+  - { id: 1, type: spill-slot, offset: -24, size: 4, alignment: 4 }
+body: |
+  bb.0:
+    liveins: $edi
+    $rbp = frame-setup MOV64rr $rsp
+    $rsp = SUB64ri8 $rsp, 32, implicit-def dead $eflags
+    MOV16mr $rbp, 1, $noreg, -16, $noreg, $di :: (store (s16) into %stack.0)
+    $edi = MOVZX32rm16 $rbp, 1, $noreg, -16, $noreg :: (load (s16) from %stack.0)
+    STACKMAP 1, 0, $di, 3
+    MOV32mr $rbp, 1, $noreg, -24, $noreg, $edi :: (store (s32) into %stack.1)
+    $edi = MOVZX32rm16 $rbp, 1, $noreg, -24, $noreg :: (load (s16) from %stack.1)
+    STACKMAP 2, 0, $di, 3
+    $rsp = ADD64ri8 $rsp, 32, implicit-def dead $eflags
+    RET64
+...

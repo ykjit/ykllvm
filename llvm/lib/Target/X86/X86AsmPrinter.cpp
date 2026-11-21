@@ -185,7 +185,8 @@ void processInstructions(
 
     // A value from the stack was loaded back into a register. Create a mapping from
     // that register to the stack offset.
-    if (TII->isLoadFromStackSlotPostFE(Instr, FI)) {
+    if (TII->isLoadFromStackSlotPostFE(Instr, FI) ||
+        TII->isZExtLoadFromStackSlotPostFE(Instr, FI)) {
       const MachineOperand OffsetOp = Instr.getOperand(4);
       const MachineOperand Lhs = Instr.getOperand(0);
       assert(Lhs.isReg() && "Is register.");
