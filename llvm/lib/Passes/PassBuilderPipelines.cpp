@@ -1327,14 +1327,16 @@ PassBuilder::buildModuleSimplificationPipeline(OptimizationLevel Level,
 
 /// TODO: Should LTO cause any differences to this set of passes?
 void PassBuilder::addVectorPasses(OptimizationLevel Level,
-                                  FunctionPassManager &FPM,
+                                  FunctionPassManager &ParentFPM,
                                   ThinOrFullLTOPhase LTOPhase) {
-  if (YkNoVectorize) {
+  if (YkNoVectorize &&
+      (!YkModuleClone || LTOPhase != ThinOrFullLTOPhase::FullLTOPostLink)) {
     return;
   }
 
   const bool IsFullLTO = LTOPhase == ThinOrFullLTOPhase::FullLTOPostLink;
 
+  FunctionPassManager FPM;
   FPM.addPass(LoopVectorizePass(
       LoopVectorizeOptions(!PTO.LoopInterleaving, !PTO.LoopVectorization)));
 
@@ -1478,6 +1480,10 @@ void PassBuilder::addVectorPasses(OptimizationLevel Level,
   // Now that we've vectorized and unrolled loops, we may have more refined
   // alignment information, try to re-derive it here.
   FPM.addPass(AlignmentFromAssumptionsPass());
+  if (YkNoVectorize)
+    ParentFPM.addPass(ModuleCloneVectorizePass(std::move(FPM)));
+  else
+    ParentFPM.addPass(std::move(FPM));
 }
 
 ModulePassManager

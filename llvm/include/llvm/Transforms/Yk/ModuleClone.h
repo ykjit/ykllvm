@@ -35,6 +35,18 @@ public:
   void prependTracingCheck(Function *, Function *, Module &);
 };
 
+// A special pass that runs vectorisation only on outlined functions that don't
+// contain control points.
+class ModuleCloneVectorizePass
+    : public PassInfoMixin<ModuleCloneVectorizePass> {
+  FunctionPassManager VectorPM;
+
+public:
+  explicit ModuleCloneVectorizePass(FunctionPassManager VectorPM)
+      : VectorPM(std::move(VectorPM)) {}
+  PreservedAnalyses run(Function &, FunctionAnalysisManager &);
+};
+
 } // namespace llvm
 
 #endif

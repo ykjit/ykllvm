@@ -19,7 +19,7 @@ entry:
 define i32 @direct_used_return(i32 %x) {
 ; CHECK-LABEL: define i32 @direct_used_return
 ; CHECK: %r = call i32 @callee(i32 %x)
-; CHECK-NEXT: call void (i64, i32, ...) @llvm.experimental.stackmap(i64 {{[0-9]+}}, i32 0, i32 %x, i32 %keep, i32 %r)
+; CHECK-NEXT: call void (i64, i32, ...) @llvm.experimental.stackmap(i64 {{[0-9]+}}, i32 0, i32 %keep, i32 %r)
 entry:
   %keep = add i32 %x, 7
   %r = call i32 @callee(i32 %x)
@@ -39,7 +39,7 @@ entry:
 define i32 @direct_unused_return(i32 %x) {
 ; CHECK-LABEL: define i32 @direct_unused_return
 ; CHECK: %r = call i32 @callee(i32 %x)
-; CHECK-NEXT: call void (i64, i32, ...) @llvm.experimental.stackmap(i64 {{[0-9]+}}, i32 0, i32 %x, i32 %keep, i32 %keep)
+; CHECK-NEXT: call void (i64, i32, ...) @llvm.experimental.stackmap(i64 {{[0-9]+}}, i32 0, i32 %keep, i32 %keep)
 entry:
   %keep = add i32 %x, 7
   %r = call i32 @callee(i32 %x)
@@ -50,7 +50,7 @@ entry:
 define i32 @void_call(i32 %x) {
 ; CHECK-LABEL: define i32 @void_call
 ; CHECK: call void @void_callee(i32 %x)
-; CHECK-NEXT: call void (i64, i32, ...) @llvm.experimental.stackmap(i64 {{[0-9]+}}, i32 0, i32 %x, i32 %keep, i32 %keep)
+; CHECK-NEXT: call void (i64, i32, ...) @llvm.experimental.stackmap(i64 {{[0-9]+}}, i32 0, i32 %keep, i32 %keep)
 entry:
   %keep = add i32 %x, 7
   call void @void_callee(i32 %x)
@@ -61,7 +61,7 @@ entry:
 define i32 @indirect_used_return(ptr %fp, i32 %x) {
 ; CHECK-LABEL: define i32 @indirect_used_return
 ; CHECK: %r = call i32 %fp(i32 %x)
-; CHECK-NEXT: call void (i64, i32, ...) @llvm.experimental.stackmap(i64 {{[0-9]+}}, i32 0, ptr %fp, i32 %x, i32 %keep, i32 %r)
+; CHECK-NEXT: call void (i64, i32, ...) @llvm.experimental.stackmap(i64 {{[0-9]+}}, i32 0, i32 %keep, i32 %r)
 entry:
   %keep = add i32 %x, 7
   %r = call i32 %fp(i32 %x)
