@@ -392,8 +392,12 @@ MachineInstr *X86FixupBWInstImpl::tryReplaceExtend(unsigned New32BitOpcode,
 MachineInstr *
 X86FixupBWInstImpl::tryReplaceInstr(MachineInstr *MI,
                                     MachineBasicBlock &MBB) const {
-  // yk expects stack reloads to stay plain loads, so that the additional
-  // locations analysis can tell them apart from folded zero-extensions.
+  // Don't widen stack reloads in functions with yk stackmaps. The additional
+  // locations analysis records a reload stack slot as an extra location,
+  // but only recognises plain `MOV` reloads - a widened `MOVZX` reload would
+  // leave the slot out of the stackmap, so deopt wouldn not restore it.
+  // The analysis can't just accept `MOVZX` loads, because the register allocator
+  // also emits them for real zero extensions, which aren't copies of the slot.
   int FI;
   if (YkStackMapAdditionalLocs &&
       (MF->getFrameInfo().hasStackMap() || MF->getFrameInfo().hasPatchPoint()) &&
