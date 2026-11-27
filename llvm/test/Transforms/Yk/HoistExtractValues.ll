@@ -1,4 +1,4 @@
-; RUN: llc --yk-insert-stackmaps -print-after=yk-stackmaps -o /dev/null < %s 2>&1 | FileCheck %s
+; RUN: llc --yk-hoist-extractvalues --yk-insert-stackmaps -print-after=yk-stackmaps -o /dev/null < %s 2>&1 | FileCheck %s
 
 declare { i1, i32 } @make_struct()
 

@@ -302,6 +302,10 @@ static cl::opt<bool>
     YkInsertStackMaps("yk-insert-stackmaps", cl::init(false), cl::NotHidden,
                       cl::desc("Insert stackmaps for JIT deoptimisation"));
 
+static cl::opt<bool> YkHoistExtractValues(
+    "yk-hoist-extractvalues", cl::init(false), cl::NotHidden,
+    cl::desc("Hoist extractvalues so that stackmaps don't track aggregates"));
+
 static cl::opt<bool>
     YkNoCallsInEntryBlocks("yk-no-calls-in-entryblocks", cl::init(false), cl::NotHidden,
                       cl::desc("Ensure there are no calls in the entryblock."));
@@ -1198,7 +1202,7 @@ bool TargetPassConfig::addISelPasses() {
     addPass(createYkIdempotentPass());
   }
 
-  if (YkInsertStackMaps) {
+  if (YkHoistExtractValues) {
     addPass(createYkHoistExtractValuesPass());
   }
 
