@@ -1202,7 +1202,7 @@ bool TargetPassConfig::addISelPasses() {
     addPass(createYkIdempotentPass());
   }
 
-  if (YkHoistExtractValues) {
+  if (YkHoistExtractValues && YkInsertStackMaps) {
     addPass(createYkHoistExtractValuesPass());
   }
 
