@@ -52,6 +52,7 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
+#include "llvm/Transforms/Yk/HoistExtractValues.h"
 #include "llvm/Transforms/Yk/Idempotent.h"
 #include "llvm/Transforms/Yk/Linkage.h"
 #include "llvm/Transforms/Yk/OutlineUntraceable.h"
@@ -300,6 +301,10 @@ static cl::opt<bool>
 static cl::opt<bool>
     YkInsertStackMaps("yk-insert-stackmaps", cl::init(false), cl::NotHidden,
                       cl::desc("Insert stackmaps for JIT deoptimisation"));
+
+static cl::opt<bool> YkHoistExtractValues(
+    "yk-hoist-extractvalues", cl::init(false), cl::NotHidden,
+    cl::desc("Hoist extractvalues so that stackmaps don't track aggregates"));
 
 static cl::opt<bool>
     YkNoCallsInEntryBlocks("yk-no-calls-in-entryblocks", cl::init(false), cl::NotHidden,
@@ -1195,6 +1200,10 @@ bool TargetPassConfig::addISelPasses() {
 
   if (YkPatchIdempotent) {
     addPass(createYkIdempotentPass());
+  }
+
+  if (YkHoistExtractValues && YkInsertStackMaps) {
+    addPass(createYkHoistExtractValuesPass());
   }
 
   if (YkSplitBlocksAfterCalls) {

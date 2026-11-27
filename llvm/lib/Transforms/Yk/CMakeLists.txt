@@ -1,5 +1,6 @@
 add_llvm_component_library(LLVMYkPasses
   ControlPoint.cpp
+  HoistExtractValues.cpp
   Idempotent.cpp
   Linkage.cpp
   LivenessAnalysis.cpp
