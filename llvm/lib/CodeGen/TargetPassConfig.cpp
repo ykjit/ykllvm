@@ -52,6 +52,7 @@
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/Transforms/Utils.h"
 #include "llvm/Transforms/Yk/ControlPoint.h"
+#include "llvm/Transforms/Yk/HoistExtractValues.h"
 #include "llvm/Transforms/Yk/Idempotent.h"
 #include "llvm/Transforms/Yk/Linkage.h"
 #include "llvm/Transforms/Yk/OutlineUntraceable.h"
@@ -1195,6 +1196,10 @@ bool TargetPassConfig::addISelPasses() {
 
   if (YkPatchIdempotent) {
     addPass(createYkIdempotentPass());
+  }
+
+  if (YkInsertStackMaps) {
+    addPass(createYkHoistExtractValuesPass());
   }
 
   if (YkSplitBlocksAfterCalls) {
