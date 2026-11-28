@@ -8,6 +8,7 @@
 #define YK_OUTLINE_FNATTR "yk_outline"
 #define YK_INDIRECT_INLINE_FNATTR "yk_indirect_inline"
 #define YK_PROMOTE_PREFIX "__yk_promote"
+#define YK_PROMOTE_PTR_PREFIX "__yk_promote_ptr"
 #define YK_DEBUG_STR "yk_debug_str"
 
 namespace llvm {

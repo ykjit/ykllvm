@@ -5305,6 +5305,11 @@ def YkIndirectInline : InheritableAttr {
   let SimpleHandler = 1;
 }
 
+def YkPromoteVCall : StmtAttr {
+  let Spellings = [Clang<"yk_promote_vcall">];
+  let Documentation = [YkPromoteVCallDocs];
+}
+
 def WebAssemblyFuncref : TypeAttr, TargetSpecificAttr<TargetWebAssembly> {
   let Spellings = [CustomKeyword<"__funcref">];
   let Documentation = [WebAssemblyExportNameDocs];

@@ -9085,6 +9085,15 @@ def YkIndirectInlineDocs : Documentation {
   }];
 }
 
+def YkPromoteVCallDocs : Documentation {
+  let Category = DocCatStmt;
+  let Content = [{
+  The ``yk_promote_vcall`` statement attribute tells the Yk JIT to promote the
+  function pointer of each C++ virtual call in the annotated statement, so
+  that calls to methods marked ``yk_indirect_inline`` can be inlined.
+  }];
+}
+
 def ReadOnlyPlacementDocs : Documentation {
   let Category = DocCatType;
   let Content = [{This attribute is attached to a structure, class or union declaration.

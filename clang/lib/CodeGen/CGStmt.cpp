@@ -787,6 +787,7 @@ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
   bool noinline = false;
   bool alwaysinline = false;
   bool noconvergent = false;
+  bool ykpromotevcall = false;
   HLSLControlFlowHintAttr::Spelling flattenOrBranch =
       HLSLControlFlowHintAttr::SpellingNotCalculated;
   const CallExpr *musttail = nullptr;
@@ -807,6 +808,9 @@ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
       break;
     case attr::NoConvergent:
       noconvergent = true;
+      break;
+    case attr::YkPromoteVCall:
+      ykpromotevcall = true;
       break;
     case attr::MustTail: {
       const Stmt *Sub = S.getSubStmt();
@@ -833,6 +837,8 @@ void CodeGenFunction::EmitAttributedStmt(const AttributedStmt &S) {
   SaveAndRestore save_noinline(InNoInlineAttributedStmt, noinline);
   SaveAndRestore save_alwaysinline(InAlwaysInlineAttributedStmt, alwaysinline);
   SaveAndRestore save_noconvergent(InNoConvergentAttributedStmt, noconvergent);
+  SaveAndRestore save_ykpromotevcall(InYkPromoteVCallAttributedStmt,
+                                     ykpromotevcall);
   SaveAndRestore save_musttail(MustTailCall, musttail);
   SaveAndRestore save_flattenOrBranch(HLSLControlFlowAttr, flattenOrBranch);
   CGAtomicOptionsRAII AORAII(CGM, AA);
