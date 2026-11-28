@@ -395,7 +395,7 @@ X86FixupBWInstImpl::tryReplaceInstr(MachineInstr *MI,
   // Don't widen stack reloads in functions with yk stackmaps. The additional
   // locations analysis records a reload stack slot as an extra location,
   // but only recognises plain `MOV` reloads - a widened `MOVZX` reload would
-  // leave the slot out of the stackmap, so deopt wouldn not restore it.
+  // leave the slot out of the stackmap, so deopt would not restore it.
   // The analysis can't just accept `MOVZX` loads, because the register allocator
   // also emits them for real zero extensions, which aren't copies of the slot.
   int FI;
