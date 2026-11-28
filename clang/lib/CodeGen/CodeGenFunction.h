@@ -612,6 +612,9 @@ public:
   /// True if the current statement has noconvergent attribute.
   bool InNoConvergentAttributedStmt = false;
 
+  /// True if the current statement has yk_promote_vcall attribute.
+  bool InYkPromoteVCallAttributedStmt = false;
+
   /// HLSL Branch attribute.
   HLSLControlFlowHintAttr::Spelling HLSLControlFlowAttr =
       HLSLControlFlowHintAttr::SpellingNotCalculated;

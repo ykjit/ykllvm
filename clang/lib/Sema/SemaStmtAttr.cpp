@@ -339,6 +339,19 @@ static Attr *handleMustTailAttr(Sema &S, Stmt *St, const ParsedAttr &A,
   return ::new (S.Context) MustTailAttr(S.Context, A);
 }
 
+static Attr *handleYkPromoteVCallAttr(Sema &S, Stmt *St, const ParsedAttr &A,
+                                      SourceRange Range) {
+  CallExprFinder CEF(S, St);
+
+  if (!CEF.foundCallExpr()) {
+    S.Diag(St->getBeginLoc(), diag::warn_attribute_ignored_no_calls_in_stmt)
+        << A;
+    return nullptr;
+  }
+
+  return ::new (S.Context) YkPromoteVCallAttr(S.Context, A);
+}
+
 static Attr *handleLikely(Sema &S, Stmt *St, const ParsedAttr &A,
                           SourceRange Range) {
 
@@ -710,6 +723,8 @@ static Attr *ProcessStmtAttribute(Sema &S, Stmt *St, const ParsedAttr &A,
     return handleNoInlineAttr(S, St, A, Range);
   case ParsedAttr::AT_MustTail:
     return handleMustTailAttr(S, St, A, Range);
+  case ParsedAttr::AT_YkPromoteVCall:
+    return handleYkPromoteVCallAttr(S, St, A, Range);
   case ParsedAttr::AT_Likely:
     return handleLikely(S, St, A, Range);
   case ParsedAttr::AT_Unlikely:

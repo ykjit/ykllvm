@@ -37,6 +37,7 @@
 #include "llvm/IR/Value.h"
 #include "llvm/Support/ConvertEBCDIC.h"
 #include "llvm/Support/ScopedPrinter.h"
+#include "llvm/YkIR/YkIRWriter.h"
 
 #include <optional>
 
@@ -2316,6 +2317,15 @@ CGCallee ItaniumCXXABI::getVirtualFunctionPointer(CodeGenFunction &CGF,
       }
     }
     VFunc = VFuncLoad;
+  }
+
+  // Promote the virtual function pointer to a constant if the call is
+  // annotated with the `yk_promote_vcall` attribute.
+  if (CGF.InYkPromoteVCallAttributedStmt) {
+    llvm::FunctionType *PromoteTy =
+        llvm::FunctionType::get(PtrTy, {PtrTy}, false);
+    VFunc = CGF.EmitNounwindRuntimeCall(
+        CGM.CreateRuntimeFunction(PromoteTy, YK_PROMOTE_PTR_PREFIX), {VFunc});
   }
 
   CGPointerAuthInfo PointerAuth;
