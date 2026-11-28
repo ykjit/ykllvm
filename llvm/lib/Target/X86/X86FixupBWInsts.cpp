@@ -54,6 +54,7 @@
 #include "llvm/CodeGen/LazyMachineBlockFrequencyInfo.h"
 #include "llvm/CodeGen/LiveRegUnits.h"
 #include "llvm/CodeGen/MachineBlockFrequencyInfo.h"
+#include "llvm/CodeGen/MachineFrameInfo.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
@@ -74,6 +75,8 @@ static cl::opt<bool>
     FixupBWInsts("fixup-byte-word-insts",
                  cl::desc("Change byte and word instructions to larger sizes"),
                  cl::init(true), cl::Hidden);
+
+extern bool YkStackMapAdditionalLocs;
 
 namespace {
 class X86FixupBWInstImpl {
@@ -389,6 +392,18 @@ MachineInstr *X86FixupBWInstImpl::tryReplaceExtend(unsigned New32BitOpcode,
 MachineInstr *
 X86FixupBWInstImpl::tryReplaceInstr(MachineInstr *MI,
                                     MachineBasicBlock &MBB) const {
+  // Don't widen stack reloads in functions with yk stackmaps. The additional
+  // locations analysis records a reload stack slot as an extra location,
+  // but only recognises plain `MOV` reloads - a widened `MOVZX` reload would
+  // leave the slot out of the stackmap, so deopt would not restore it.
+  // The analysis can't just accept `MOVZX` loads, because the register allocator
+  // also emits them for real zero extensions, which aren't copies of the slot.
+  int FI;
+  if (YkStackMapAdditionalLocs &&
+      (MF->getFrameInfo().hasStackMap() || MF->getFrameInfo().hasPatchPoint()) &&
+      TII->isLoadFromStackSlotPostFE(*MI, FI))
+    return nullptr;
+
   // See if this is an instruction of the type we are currently looking for.
   switch (MI->getOpcode()) {
 
